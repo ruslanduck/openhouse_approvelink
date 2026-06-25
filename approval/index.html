@@ -1,0 +1,516 @@
+<!--
+  OPENHOUSE — Client Proof Approval page
+  Кастомная замена Bubble-страницы https://client.byopenhouse.com/approval?id=...
+  Один файл, без зависимостей кроме шрифтов Google. Можно залить на любой статический хостинг.
+
+  КАК РАБОТАЕТ:
+    1. Страница берёт ?id=<RECORD_ID> из URL (как в формуле Airtable approval_link).
+    2. Тянет данные пруфа и рисует их вместо PDF.
+    3. Approve  -> попап-подтверждение ("дальше изменить нельзя") -> отметка в Airtable.
+    4. Make changes -> попап с правками -> создаёт заявку на ревизию в Airtable.
+
+  ВАЖНО ПРО AIRTABLE (читать перед боевым запуском) — см. блок CONFIG ниже.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OPENHOUSE — Proof Approval</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Archivo+Black&family=Instrument+Serif:ital@1&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#F3EFE7;          /* тёплый кремовый фон страницы */
+    --card:#FFFFFF;           /* белый лист пруфа */
+    --ink:#1E1C18;            /* почти чёрный — логотип/текст */
+    --ink-soft:#3A362F;
+    --muted:#7C6F5A;          /* приглушённый коричневый — подписи */
+    --line:#D9D2C4;           /* тонкие линейки */
+    --line-ink:#1E1C18;
+    --warn:#A83226;           /* красный — предупреждение о необратимости */
+    --btn-ink:#15140F;
+    --ok:#3C6E47;
+    --radius:9px;
+    --maxw:1040px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Archivo",-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+    padding:0 20px 80px;
+  }
+
+  /* ---------- ШАПКА ---------- */
+  header{max-width:var(--maxw);margin:0 auto;text-align:center}
+  .wordmark{
+    font-family:"Archivo Black",sans-serif;
+    font-weight:400;
+    letter-spacing:-.01em;
+    line-height:.92;
+    color:var(--ink);
+    margin:clamp(24px,5vw,56px) 0 0;
+    font-size:clamp(54px,13vw,150px);
+  }
+  .subtitle{color:var(--muted);font-size:16px;margin:18px 0 0}
+  .reply-note{font-weight:700;font-size:15px;margin:16px auto 0;max-width:640px}
+
+  /* ---------- КНОПКИ ДЕЙСТВИЙ ---------- */
+  .actions{display:flex;gap:14px;justify-content:center;margin:28px 0 6px;flex-wrap:wrap}
+  .btn{
+    font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;
+    padding:12px 26px;border-radius:var(--radius);border:1.5px solid var(--ink);
+    background:#fff;color:var(--ink);transition:transform .08s ease, background .15s ease, opacity .15s;
+  }
+  .btn:hover{transform:translateY(-1px)}
+  .btn:active{transform:translateY(0)}
+  .btn-primary{background:var(--btn-ink);color:#fff;border-color:var(--btn-ink)}
+  .btn-primary:hover{background:#000}
+  .btn:focus-visible{outline:3px solid #9ab; outline-offset:2px}
+
+  /* состояние "уже решено" вместо кнопок */
+  .resolved{max-width:680px;margin:26px auto 0;padding:16px 20px;border-radius:var(--radius);
+    border:1.5px solid var(--line-ink);background:#fff;text-align:center;font-weight:600}
+  .resolved.approved{border-color:var(--ok);color:var(--ok)}
+  .resolved.changes{border-color:var(--muted);color:var(--ink-soft)}
+
+  /* ---------- ЛИСТ ПРУФА ---------- */
+  .proof-wrap{max-width:var(--maxw);margin:34px auto 0;overflow-x:auto}
+  .proof{
+    background:var(--card);min-width:720px;
+    padding:34px 40px 0;border:1px solid var(--line);
+    box-shadow:0 1px 0 rgba(0,0,0,.03);
+  }
+
+  .p-head{display:flex;justify-content:space-between;align-items:baseline;gap:20px}
+  .p-kind{font-weight:700;letter-spacing:.06em;font-size:15px}
+  .p-product{font-family:"Instrument Serif",Georgia,serif;font-style:italic;font-size:21px;margin-left:6px}
+  .p-order{font-size:12px;letter-spacing:.08em;color:var(--ink-soft)}
+  .p-order b{font-size:17px;letter-spacing:0}
+
+  .p-meta{
+    display:flex;justify-content:space-between;gap:20px;
+    border-top:1px solid var(--line-ink);border-bottom:1px solid var(--line-ink);
+    margin-top:14px;padding:8px 0;
+    font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);
+    flex-wrap:wrap;
+  }
+  .p-meta .sep{color:var(--line);margin:0 8px}
+
+  .p-mockup-label{text-align:center;margin:26px 0 4px;font-size:11px;letter-spacing:.14em;color:var(--ink-soft)}
+  .p-mockup-label small{display:block;color:var(--muted);letter-spacing:.18em;margin-top:2px}
+
+  .mockups{display:flex;gap:24px;justify-content:center;align-items:flex-start;margin:8px 0 0;flex-wrap:wrap}
+  .mockup{position:relative;width:300px;max-width:44vw}
+  .mockup svg{width:100%;height:auto;display:block}
+  .mockup .art{
+    position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);
+    width:42%;
+  }
+  .mockup .art img{width:100%;display:block}
+
+  .measure{text-align:center;color:var(--muted);font-size:10.5px;letter-spacing:.05em;margin:14px 0 0}
+
+  /* нижняя сетка спецификаций */
+  .p-specs{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line-ink);margin-top:18px}
+  .spec{padding:14px 14px 22px;border-left:1px solid var(--line)}
+  .spec:first-child{border-left:0}
+  .spec h4{margin:0 0 10px;font-size:10px;letter-spacing:.12em;color:var(--ink-soft);font-weight:700;text-transform:uppercase}
+  .spec .val{font-size:13px}
+  .swatch{width:30px;height:30px;border:1px solid var(--line);border-radius:3px;margin-bottom:8px}
+  .swatch.rainbow{border:0;background:linear-gradient(180deg,#e23b2e 0 16%,#ef8a23 16% 33%,#f2c43b 33% 50%,#3f9a52 50% 66%,#2f6fb0 66% 83%,#7a4ea3 83% 100%)}
+  .sizes{display:grid;grid-template-columns:auto auto;gap:2px 18px;font-family:"Space Mono",monospace;font-size:13px}
+  .sizes .s{color:var(--ink-soft)}
+  .vector{display:flex;gap:12px;align-items:center}
+  .vector .v-art{width:64px;flex:0 0 64px}
+  .vector .v-art img{width:100%;display:block}
+  .vector .v-meta{font-size:10.5px;color:var(--ink-soft);line-height:1.55}
+  .vector .v-meta b{display:block;letter-spacing:.1em;margin-bottom:4px;color:var(--ink)}
+
+  .p-foot{display:flex;justify-content:space-between;gap:24px;border-top:1px solid var(--line);
+    margin-top:0;padding:14px 0 22px;align-items:flex-end}
+  .disclaimer{font-size:8.5px;line-height:1.55;color:#A39A86;max-width:78%;columns:3;column-gap:18px}
+  .p-foot .mini-mark{font-family:"Archivo Black",sans-serif;font-size:14px;letter-spacing:-.01em}
+
+  /* ---------- СОСТОЯНИЯ ЗАГРУЗКИ/ОШИБКИ ---------- */
+  .state{max-width:560px;margin:60px auto;text-align:center;color:var(--ink-soft)}
+  .state h2{font-family:"Archivo Black",sans-serif;font-weight:400;font-size:22px;margin:0 0 10px}
+  .spinner{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--ink);border-radius:50%;
+    margin:0 auto 16px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---------- МОДАЛКИ ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(20,18,14,.55);display:none;align-items:center;justify-content:center;
+    padding:20px;z-index:50}
+  .overlay.open{display:flex}
+  .modal{background:#fff;border-radius:14px;max-width:480px;width:100%;padding:28px 28px 24px;
+    box-shadow:0 24px 60px rgba(0,0,0,.3);animation:pop .16s ease}
+  @keyframes pop{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}
+  .modal h3{font-family:"Archivo Black",sans-serif;font-weight:400;font-size:21px;margin:0 0 10px}
+  .modal p{color:var(--ink-soft);font-size:14.5px;margin:0 0 18px}
+  .modal .warn{color:var(--warn);font-weight:600}
+  .modal-actions{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:20px}
+
+  .field-label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+  .chip{font-size:13px;border:1.5px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;user-select:none;background:#fff}
+  .chip input{display:none}
+  .chip.on{border-color:var(--ink);background:var(--ink);color:#fff}
+  textarea{width:100%;min-height:104px;resize:vertical;font-family:inherit;font-size:14px;
+    padding:12px;border:1.5px solid var(--line);border-radius:8px}
+  textarea:focus{outline:none;border-color:var(--ink)}
+  .err{color:var(--warn);font-size:13px;margin:6px 0 0;display:none}
+
+  @media(max-width:640px){
+    .p-specs{grid-template-columns:repeat(2,1fr)}
+    .spec{border-left:1px solid var(--line);border-top:1px solid var(--line)}
+    .spec:nth-child(odd){border-left:0}
+    .disclaimer{columns:1;max-width:100%}
+    .p-foot{flex-direction:column;align-items:flex-start}
+  }
+</style>
+
+<header>
+  <h1 class="wordmark">OPENHOUSE</h1>
+  <p class="subtitle">Please approve the design</p>
+  <p class="reply-note">Do not reply to the email. Approvals and comments must be submitted through this page.</p>
+
+  <!-- сюда рендерятся кнопки ИЛИ статус "уже решено" -->
+  <div id="decision"></div>
+</header>
+
+<main id="content">
+  <div class="state"><div class="spinner"></div>Loading your proof…</div>
+</main>
+
+<!-- ===== МОДАЛКА: ПОДТВЕРЖДЕНИЕ APPROVE ===== -->
+<div class="overlay" id="approveModal" role="dialog" aria-modal="true" aria-labelledby="apTitle">
+  <div class="modal">
+    <h3 id="apTitle">Approve this proof?</h3>
+    <p>
+      <span class="warn">Once you approve, this design goes straight into production and can’t be changed.</span>
+      Please double-check spelling, colors, sizes, and artwork placement before confirming.
+    </p>
+    <div class="modal-actions">
+      <button class="btn" data-close>Go back</button>
+      <button class="btn btn-primary" id="confirmApprove">Yes, approve</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== МОДАЛКА: ЗАПРОС ПРАВОК ===== -->
+<div class="overlay" id="changesModal" role="dialog" aria-modal="true" aria-labelledby="chTitle">
+  <div class="modal">
+    <h3 id="chTitle">Request changes</h3>
+    <p>Tell us what to adjust and we’ll send you an updated proof.</p>
+
+    <div class="field-label">What needs changing? (optional)</div>
+    <div class="chips" id="chips">
+      <label class="chip"><input type="checkbox" value="Artwork">Artwork</label>
+      <label class="chip"><input type="checkbox" value="Colors">Colors</label>
+      <label class="chip"><input type="checkbox" value="Placement & size">Placement &amp; size</label>
+      <label class="chip"><input type="checkbox" value="Text & spelling">Text &amp; spelling</label>
+      <label class="chip"><input type="checkbox" value="Product or quantity">Product / quantity</label>
+      <label class="chip"><input type="checkbox" value="Something else">Something else</label>
+    </div>
+
+    <div class="field-label">Details</div>
+    <textarea id="changeText" placeholder="e.g. Make the logo on the front about 10% smaller and move it up 1 cm."></textarea>
+    <div class="err" id="changeErr">Please add a short note so we know what to change.</div>
+
+    <div class="modal-actions">
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="confirmChanges">Send change request</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — ПОДКЛЮЧЕНИЕ ЧЕРЕЗ MAKE
+   ------------------------------------------------------------
+   Бэкенда писать не нужно: данные читает и пишет Make через 2 вебхука.
+   Здесь храним только их публичные URL — это НЕ секрет (ключ Airtable
+   остаётся внутри Make), поэтому их можно держать прямо в файле/на GitHub.
+
+   ШАГ 1: в Make создаёшь 2 сценария с модулем "Custom webhook",
+          копируешь их URL и вставляешь сюда.
+   ШАГ 2: ставишь USE_MOCK = false.
+
+   Сценарий A (чтение пруфа):  GET  WEBHOOK_PROOF?id=REC...
+        Make -> Airtable "Get a record" по id -> "Webhook response" с JSON.
+        JSON должен быть в формате объекта MOCK ниже (те же ключи).
+
+   Сценарий B (ответ клиента): POST WEBHOOK_DECISION
+        тело { id, action:"approve" }                     -> отметить одобрено
+        тело { id, action:"changes", note, categories[] } -> заявка на правки
+        Make -> Router -> Airtable "Update a record" -> "Webhook response" {ok:true}
+
+   КАК ПОЛЯ AIRTABLE ЛОЖАТСЯ В JSON (по твоему CSV):
+     orderNo      <- Order            (SHPF1319)
+     preparedFor  <- Client           (Smug Mug)
+     productName  <- Request Name / Product DB
+     productCode  <- SKU_new          (A001)
+     printMethod  <- Customization Method
+     baseColor    <- Base Color
+     sizes        <- Variant + Quantity ("6, 10, 10, 4" -> S/M/L/XL)
+     frontArtUrl  <- первая ссылка из "Artwork from Order"
+     status       <- Status
+   ============================================================ */
+const USE_MOCK        = true;  // <-- ПОСТАВЬ false, когда вебхуки готовы
+const WEBHOOK_PROOF   = "https://hook.REGION.make.com/ВСТАВЬ_URL_СЦЕНАРИЯ_A";
+const WEBHOOK_DECISION= "https://hook.REGION.make.com/ВСТАВЬ_URL_СЦЕНАРИЯ_B";
+
+/* ---- пример записи (соответствует пруфу Smug Mug со скриншота) ---- */
+const MOCK = {
+  recordID:"rectkLj0T3LCQiOlI",
+  proofKind:"CLIENT PROOF",          // "CLIENT PROOF" | "VENDOR PROOF"
+  productName:"Signature T-Shirt",
+  orderNo:"SHPF1319",
+  preparedFor:"Smug Mug",
+  date:"06.22.26",
+  printMethod:"DTF",
+  proofVersion:"V1",
+  productCode:"A001",
+  scale:"100% SCALE",
+  measureLine:'PRODUCT MEASUREMENTS BASED ON SIZE L:  Width — 56.5 cm,  Length — 71 cm',
+  baseColor:{ name:"White # 1", hex:"#FFFFFF" },
+  printColor:{ name:"Multicolor Digital", rainbow:true },   // или {name:"Black", hex:"#000"}
+  qty:30,
+  sizes:[{size:"S",qty:6},{size:"M",qty:10},{size:"L",qty:10},{size:"XL",qty:4}],
+  placement:"Front",
+  artworkSize:'W: 28 cm × H: 15.18 cm\nor W: 11.02" × H: 6.0"',
+  frontArtUrl:null,   // ссылка из Airtable (Artwork from Order). null -> плейсхолдер
+  backArtUrl:null,
+  vectorArtUrl:null,
+  status:"Proof Sent",        // "Proof Sent" | "Approved" | "Revision Requested"
+  approvedDate:null,
+  changeDate:null
+};
+
+/* ---------------- API-слой (через вебхуки Make) ---------------- */
+const API = {
+  async getProof(id){
+    if(USE_MOCK) return {...MOCK, recordID:id || MOCK.recordID};
+    const r = await fetch(`${WEBHOOK_PROOF}?id=${encodeURIComponent(id)}`);
+    if(!r.ok) throw new Error("not_found");
+    return r.json();
+  },
+  async approve(id){
+    if(USE_MOCK){ await wait(700); return {ok:true, date:today()}; }
+    const r = await fetch(WEBHOOK_DECISION,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ id, action:"approve" })});
+    if(!r.ok) throw new Error("approve_failed");
+    return r.json().catch(()=>({ok:true, date:today()}));
+  },
+  async requestChanges(id, payload){
+    if(USE_MOCK){ await wait(700); return {ok:true, date:today()}; }
+    const r = await fetch(WEBHOOK_DECISION,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ id, action:"changes", ...payload })});
+    if(!r.ok) throw new Error("changes_failed");
+    return r.json().catch(()=>({ok:true, date:today()}));
+  }
+};
+const wait = ms => new Promise(r=>setTimeout(r,ms));
+const today = () => new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+
+/* ---------------- мокап-болванка (нейтральная футболка) ---------------- */
+function teeSVG(){
+  return `<svg viewBox="0 0 300 320" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M104 26 L66 44 L34 92 L60 118 L78 104 L78 300 L222 300 L222 104 L240 118 L266 92 L234 44 L196 26
+             C190 50 166 60 150 60 C134 60 110 50 104 26 Z"
+      fill="#ECEAE4" stroke="#D7D2C6" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M104 26 C110 50 134 60 150 60 C166 60 190 50 196 26" fill="none" stroke="#D7D2C6" stroke-width="1.5"/>
+  </svg>`;
+}
+function artPlaceholder(){
+  return `<svg viewBox="0 0 120 70" xmlns="http://www.w3.org/2000/svg">
+    <rect width="120" height="70" fill="#F4F2EC" stroke="#D7D2C6" stroke-dasharray="4 3"/>
+    <text x="60" y="38" text-anchor="middle" font-family="Space Mono, monospace" font-size="9" fill="#A89C84">ARTWORK</text>
+  </svg>`;
+}
+
+/* ---------------- рендер пруфа ---------------- */
+function renderProof(d){
+  const front = d.frontArtUrl
+    ? `<div class="art"><img src="${d.frontArtUrl}" alt="Artwork"></div>`
+    : `<div class="art">${artPlaceholder()}</div>`;
+  const vector = d.vectorArtUrl
+    ? `<div class="v-art"><img src="${d.vectorArtUrl}" alt="Vector artwork"></div>`
+    : `<div class="v-art">${artPlaceholder()}</div>`;
+
+  const printSwatch = d.printColor.rainbow
+    ? `<div class="swatch rainbow"></div>`
+    : `<div class="swatch" style="background:${d.printColor.hex||'#000'}"></div>`;
+
+  const sizeRows = d.sizes.map(s=>`<span class="s">${s.size}</span><span>${s.qty}</span>`).join("");
+
+  return `
+  <div class="proof-wrap">
+    <div class="proof">
+      <div class="p-head">
+        <div><span class="p-kind">${d.proofKind}</span><span class="p-product">${d.productName}</span></div>
+        <div class="p-order">ORDER NO. <b>${d.orderNo}</b></div>
+      </div>
+
+      <div class="p-meta">
+        <div>
+          PREPARED FOR: ${esc(d.preparedFor)}<span class="sep">/</span>
+          DATE: ${d.date}<span class="sep">/</span>
+          PRINT METHOD: ${d.printMethod}<span class="sep">/</span>
+          PROOF: ${d.proofVersion}
+        </div>
+        <div>OH&nbsp;&nbsp;PRODUCT ${d.productCode}</div>
+      </div>
+
+      <div class="p-mockup-label">PRODUCT MOCKUP<small>${d.scale}</small></div>
+      <div class="mockups">
+        <div class="mockup">${teeSVG()}${front}</div>
+        <div class="mockup">${teeSVG()}</div>
+      </div>
+      <div class="measure">${esc(d.measureLine)}</div>
+
+      <div class="p-specs">
+        <div class="spec">
+          <h4>Base Color</h4>
+          <div class="swatch" style="background:${d.baseColor.hex}"></div>
+          <div class="val">${esc(d.baseColor.name)}</div>
+        </div>
+        <div class="spec">
+          <h4>Print Color</h4>
+          ${printSwatch}
+          <div class="val">${esc(d.printColor.name)}</div>
+        </div>
+        <div class="spec">
+          <h4>QTY : ${d.qty}</h4>
+        </div>
+        <div class="spec">
+          <h4>Size Breakdown</h4>
+          <div class="sizes">${sizeRows}</div>
+        </div>
+        <div class="spec">
+          <h4>Client Vector Artwork</h4>
+          <div class="vector">
+            ${vector}
+            <div class="v-meta"><b>${d.placement.toUpperCase()}</b>${esc(d.artworkSize).replace(/\n/g,"<br>")}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-foot">
+        <div class="disclaimer">
+          Colors shown on screen are approximate and may differ from printed or stitched output. This proof confirms
+          layout, placement, sizing, spelling, and color reference only. By approving, you confirm all details are
+          correct and authorize production. Once approved, changes are not possible. Measurements are based on the
+          listed reference size and may vary slightly across the run.
+        </div>
+        <div class="mini-mark">OPENHOUSE</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------------- кнопки / статус решения ---------------- */
+function renderDecision(d){
+  const box = document.getElementById("decision");
+  if(d.status === "Approved"){
+    box.innerHTML = `<div class="resolved approved">Approved${d.approvedDate?` on ${d.approvedDate}`:""}.
+      Thanks — your design is now in production.</div>`;
+    return;
+  }
+  if(d.status === "Revision Requested"){
+    box.innerHTML = `<div class="resolved changes">We received your change request${d.changeDate?` on ${d.changeDate}`:""}.
+      An updated proof is on the way.</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="actions">
+      <button class="btn" id="makeChanges">Make changes</button>
+      <button class="btn btn-primary" id="approve">Approve</button>
+    </div>`;
+  document.getElementById("approve").onclick   = ()=>openModal("approveModal");
+  document.getElementById("makeChanges").onclick = ()=>openModal("changesModal");
+}
+
+/* ---------------- модалки ---------------- */
+function openModal(id){ document.getElementById(id).classList.add("open"); }
+function closeModal(el){ el.classList.remove("open"); }
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=e=>closeModal(e.target.closest(".overlay")));
+document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{ if(e.target===o) closeModal(o); }));
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.querySelectorAll(".overlay.open").forEach(closeModal); });
+
+// чипы правок
+document.querySelectorAll("#chips .chip").forEach(c=>{
+  c.addEventListener("click",()=>{ const i=c.querySelector("input"); i.checked=!i.checked; c.classList.toggle("on",i.checked); });
+});
+
+let CURRENT = null;
+
+// подтверждение approve
+document.getElementById("confirmApprove").onclick = async ()=>{
+  const btn = document.getElementById("confirmApprove");
+  btn.disabled = true; btn.textContent = "Approving…";
+  try{
+    const res = await API.approve(CURRENT.recordID);
+    closeModal(document.getElementById("approveModal"));
+    CURRENT.status = "Approved"; CURRENT.approvedDate = res.date || today();
+    renderDecision(CURRENT);
+    window.scrollTo({top:0,behavior:"smooth"});
+  }catch(err){
+    btn.disabled=false; btn.textContent="Yes, approve";
+    alert("Something went wrong sending your approval. Please try again, or contact your account manager.");
+  }
+};
+
+// отправка правок
+document.getElementById("confirmChanges").onclick = async ()=>{
+  const text = document.getElementById("changeText").value.trim();
+  const errEl = document.getElementById("changeErr");
+  if(!text){ errEl.style.display="block"; return; }
+  errEl.style.display="none";
+  const cats = [...document.querySelectorAll("#chips input:checked")].map(i=>i.value);
+
+  const btn = document.getElementById("confirmChanges");
+  btn.disabled = true; btn.textContent = "Sending…";
+  try{
+    const res = await API.requestChanges(CURRENT.recordID, {note:text, categories:cats});
+    closeModal(document.getElementById("changesModal"));
+    CURRENT.status = "Revision Requested"; CURRENT.changeDate = res.date || today();
+    renderDecision(CURRENT);
+    window.scrollTo({top:0,behavior:"smooth"});
+  }catch(err){
+    btn.disabled=false; btn.textContent="Send change request";
+    alert("Something went wrong sending your request. Please try again, or contact your account manager.");
+  }
+};
+
+/* ---------------- утилиты ---------------- */
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function getId(){ return new URLSearchParams(location.search).get("id"); }
+
+/* ---------------- загрузка ---------------- */
+(async function init(){
+  const id = getId();
+  const content = document.getElementById("content");
+
+  if(!id && !USE_MOCK){
+    document.getElementById("decision").innerHTML = "";
+    content.innerHTML = `<div class="state"><h2>Link is missing its proof</h2>
+      Please open the link from your email, or contact your account manager and we’ll resend it.</div>`;
+    return;
+  }
+  try{
+    CURRENT = await API.getProof(id);
+    content.innerHTML = renderProof(CURRENT);
+    renderDecision(CURRENT);
+  }catch(err){
+    document.getElementById("decision").innerHTML = "";
+    content.innerHTML = `<div class="state"><h2>We couldn’t find this proof</h2>
+      It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;
+  }
+})();
+</script>
