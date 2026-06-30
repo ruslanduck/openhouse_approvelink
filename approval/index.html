@@ -1,197 +1,496 @@
-<!doctype html>
-<html lang="en">
-<head>
+<!--
+  OPENHOUSE — Client Proof Approval
+  Боевой режим: USE_MOCK = false — страница тянет данные из Make по вебхуку.
+  Для предпросмотра дизайна без Make поставь USE_MOCK = true (ниже в скрипте) —
+  тогда подставятся реальные данные Smug Mug из объекта MOCK.
+
+  ╔══════════════════════════════════════════════════════════╗
+  ║  ШРИФТЫ — меняются в одном месте, в :root ниже            ║
+  ║  --font-display / --font-body / --font-serif / --font-mono ║
+  ║  Рядом в комментах — варианты на замену.                   ║
+  ╚══════════════════════════════════════════════════════════╝
+-->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Client Proof</title>
+<title>OPENHOUSE — Proof Approval</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=Newsreader:ital@1&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
 <style>
   :root{
-    --ink:#1b1a18; --paper:#ffffff; --line:#e4e0d8; --muted:#9a948a; --accent:#3a5a6b;
-    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-    --serif:"Times New Roman",Georgia,serif;
-    --sans:-apple-system,system-ui,"Helvetica Neue",Arial,sans-serif;
+    /* ---- ШРИФТЫ (меняй тут) ---- */
+    --font-display:"Archivo Black","Arial Black",sans-serif;            /* большой логотип, заголовки */
+    --font-body:"Archivo",-apple-system,system-ui,Segoe UI,sans-serif;  /* основной текст, лейблы */
+    --font-serif:"Newsreader","Times New Roman",Georgia,serif;          /* курсив "Signature T-Shirt" */
+    --font-mono:"IBM Plex Mono",ui-monospace,"Courier New",monospace;   /* строка PREPARED FOR / DATE ... */
+    /* альтернативы: display -> "Anton" | serif -> "PT Serif"/"Spectral" | mono -> "Space Mono"/"JetBrains Mono" */
+
+    --paper:#F3EFE7;
+    --card:#FFFFFF;
+    --ink:#1E1C18;
+    --ink-soft:#3A362F;
+    --muted:#7C6F5A;
+    --line:#DCD6C8;
+    --line-ink:#1E1C18;
+    --warn:#A83226;
+    --btn-ink:#15140F;
+    --ok:#3C6E47;
+    --radius:9px;
+    --maxw:1040px;
   }
+
   *{box-sizing:border-box}
-  body{margin:0;background:#efece6;color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
-  .sheet{max-width:1080px;margin:30px auto;background:var(--paper);padding:40px 48px 26px;
-         box-shadow:0 1px 0 rgba(0,0,0,.04),0 14px 44px rgba(0,0,0,.07);border:1px solid #eee}
-  .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase}
-  .rule{height:1px;background:var(--line);border:0;margin:18px 0}
+  html,body{margin:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:var(--font-body);-webkit-font-smoothing:antialiased;
+    line-height:1.5;padding:0 20px 80px;
+  }
 
-  .head{display:flex;justify-content:space-between;align-items:baseline;gap:24px}
-  .title{font-family:var(--serif);font-size:23px;font-weight:700;letter-spacing:.01em;color:#26425a}
-  .title em{font-style:italic;font-weight:400;color:#2a2a2a}
-  .orderno{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);text-align:right}
-  .orderno b{font-size:19px;letter-spacing:.02em;color:var(--ink);margin-left:8px}
-  .metarow{display:flex;align-items:center;gap:0;margin-top:2px}
-  .meta{display:flex;gap:8px 18px;flex-wrap:wrap;flex:1}
-  .meta .lbl{color:#55514a}.meta .lbl span{color:var(--muted)}
-  .meta .sep{color:var(--line)}
-  .pcode{display:flex;align-items:center;gap:7px;color:var(--muted);padding-left:18px;border-left:1px solid var(--line)}
-  .pcode svg{width:14px;height:14px;opacity:.55}
+  /* ---------- ШАПКА ---------- */
+  header{max-width:var(--maxw);margin:0 auto;text-align:center}
+  .wordmark{
+    font-family:var(--font-display);font-weight:400;letter-spacing:-.015em;line-height:.9;
+    color:var(--ink);margin:clamp(24px,5vw,56px) 0 0;font-size:clamp(54px,13vw,150px);
+  }
+  .subtitle{color:var(--muted);font-size:16px;margin:18px 0 0}
+  .reply-note{font-weight:700;font-size:15px;margin:16px auto 0;max-width:660px}
 
-  .center{text-align:center}
-  .mocklbl{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:#3a5a6b;font-weight:600}
-  .scale{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--muted);margin-top:3px}
-  .mockwrap{display:flex;justify-content:center;gap:30px;flex-wrap:wrap;margin:16px 0 4px}
-  .mockwrap img{max-width:460px;width:100%;height:auto;display:block}
-  .mockph{color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.05em;
-          padding:70px 40px;border:1px dashed var(--line);text-align:center}
-  .measure{text-align:center;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:#9c7b4f;margin:10px 0 2px}
+  .actions{display:flex;gap:14px;justify-content:center;margin:28px 0 6px;flex-wrap:wrap}
+  .btn{font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;padding:12px 26px;
+    border-radius:var(--radius);border:1.5px solid var(--ink);background:#fff;color:var(--ink);
+    transition:transform .08s ease,background .15s ease,opacity .15s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn:active{transform:translateY(0)}
+  .btn-primary{background:var(--btn-ink);color:#fff;border-color:var(--btn-ink)}
+  .btn-primary:hover{background:#000}
+  .btn:focus-visible{outline:3px solid #9ab;outline-offset:2px}
 
-  .band{display:flex;align-items:stretch}
-  .col{padding:4px 26px;flex:0 0 auto}
-  .col+.col{border-left:1px solid var(--line)}
-  .col.grow{flex:1}
-  .col h4{margin:0 0 14px;font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;color:#3a3a3a}
-  .swatches{display:flex;gap:16px;flex-wrap:wrap}
-  .sw{text-align:center;min-width:70px}
-  .dot{width:56px;height:56px;border-radius:50%;margin:0 auto 8px;border:1px solid rgba(0,0,0,.10);
-       box-shadow:inset 0 0 0 3px #fff,0 0 0 1px rgba(0,0,0,.06)}
-  .sw .nm{font-family:var(--mono);font-size:9px;letter-spacing:.06em;line-height:1.4;text-transform:uppercase;color:#4a463f}
-  .qty{font-family:var(--serif);font-size:15px;font-weight:600}
-  .sizes{font-family:var(--mono);font-size:12px;letter-spacing:.03em;line-height:1.85}
-  .sizes .s{display:inline-block;width:42px;font-weight:700}
-  .vector{display:flex;gap:14px;align-items:flex-start}
-  .vector .art{width:96px;height:70px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
-               font-family:var(--mono);font-size:8px;color:var(--muted);overflow:hidden}
-  .vector .art img{max-width:100%;max-height:100%}
-  .vector .side .lbl{font-weight:700;color:#2a2a2a;font-size:10px}
-  .vector .side .dim{font-family:var(--mono);font-size:9px;color:#6a655c;margin-top:6px}
-  .notes{font-size:11px;line-height:1.5;color:#4a463f;max-width:220px;white-space:pre-wrap}
+  .resolved{max-width:680px;margin:26px auto 0;padding:16px 20px;border-radius:var(--radius);
+    border:1.5px solid var(--line-ink);background:#fff;text-align:center;font-weight:600}
+  .resolved.approved{border-color:var(--ok);color:var(--ok)}
+  .resolved.changes{border-color:var(--muted);color:var(--ink-soft)}
 
-  .foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:22px}
-  .disclaimer{font-size:8px;line-height:1.5;color:#bdb8ae;max-width:600px}
-  .wordmark{font-family:var(--serif);font-size:15px;letter-spacing:.28em;color:#26425a;font-weight:700}
+  /* ---------- ЛИСТ ПРУФА ---------- */
+  .proof-wrap{max-width:var(--maxw);margin:34px auto 0;overflow-x:auto}
+  .proof{background:var(--card);min-width:760px;padding:32px 40px 0;border:1px solid var(--line)}
+
+  .p-head{display:flex;justify-content:space-between;align-items:baseline;gap:20px}
+  .p-kind{font-weight:700;letter-spacing:.04em;font-size:15px}
+  .p-product{font-family:var(--font-serif);font-style:italic;font-size:21px;margin-left:8px;font-weight:400}
+  .p-order{font-size:11px;letter-spacing:.1em;color:var(--ink-soft)}
+  .p-order b{font-size:18px;letter-spacing:.01em;margin-left:4px}
+
+  .p-meta{display:flex;justify-content:space-between;align-items:stretch;
+    border-top:1px solid var(--line-ink);border-bottom:1px solid var(--line-ink);
+    margin-top:14px;font-family:var(--font-mono);font-size:11px;letter-spacing:.02em;
+    text-transform:uppercase;color:var(--ink-soft)}
+  .p-meta .left{padding:9px 0;display:flex;align-items:center;flex-wrap:wrap}
+  .p-meta .sep{color:var(--line);margin:0 10px}
+  .p-meta .right{display:flex;align-items:center;gap:8px;padding:9px 0 9px 16px;
+    border-left:1px solid var(--line-ink);white-space:nowrap}
+  .oh-key{width:22px;height:11px;color:var(--ink-soft);flex:0 0 auto}
+
+  .p-mockup-label{text-align:center;margin:24px 0 2px;font-size:11px;letter-spacing:.16em;color:var(--ink-soft)}
+  .p-mockup-label small{display:block;color:var(--muted);letter-spacing:.2em;margin-top:2px;font-size:9px}
+
+  .mockups{display:flex;gap:18px;justify-content:center;align-items:flex-start;margin:6px 0 0;flex-wrap:wrap}
+  .mockup{position:relative;width:330px;max-width:46vw}
+  .mockup svg{width:100%;height:auto;display:block}
+  .mockup .art{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:40%}
+  .mockup .art img{width:100%;display:block}
+
+  .measure{text-align:center;color:var(--muted);font-size:9.5px;letter-spacing:.05em;margin:10px 0 0}
+
+  /* нижняя сетка */
+  .p-specs{display:grid;grid-template-columns:0.9fr 0.9fr 0.7fr 1.05fr 2fr;
+    border-top:1.5px solid var(--line-ink);margin-top:14px}
+  .spec{padding:14px 16px 22px;border-left:1px solid var(--line)}
+  .spec:first-child{border-left:0}
+  .spec h4{margin:0 0 12px;font-size:9.5px;letter-spacing:.13em;color:var(--ink-soft);font-weight:700;text-transform:uppercase}
+  .spec.center{text-align:center}
+  .spec.center h4{text-align:center}
+  .swatch{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);margin:0 auto 8px}
+  .swatch.rainbow{border:0;background:linear-gradient(180deg,#e23b2e 0 16%,#ef8a23 16% 33%,#f2c43b 33% 50%,#3f9a52 50% 66%,#2f6fb0 66% 83%,#7a4ea3 83% 100%)}
+  .spec .val{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
+  .sizes{display:grid;grid-template-columns:auto 1fr;gap:3px 22px;font-size:13px;font-variant-numeric:tabular-nums}
+  .sizes .s{color:var(--ink-soft);font-weight:600}
+  .vector{display:flex;gap:0;align-items:center}
+  .vector .v-art{width:88px;flex:0 0 88px}
+  .vector .v-art img{width:100%;display:block}
+  .vector .v-meta{font-size:9.5px;color:var(--ink-soft);line-height:1.6;padding-left:16px;border-left:1px solid var(--line);margin-left:14px}
+  .vector .v-meta b{display:block;letter-spacing:.12em;margin-bottom:4px;color:var(--ink)}
+
+  .p-foot{display:flex;justify-content:space-between;gap:24px;border-top:1px solid var(--line);
+    padding:14px 0 22px;align-items:flex-end}
+  .disclaimer{font-size:8px;line-height:1.55;color:#A89C84;max-width:74%;columns:3;column-gap:18px}
+  .disclaimer b{display:block;letter-spacing:.14em;color:#8C8068;margin-bottom:4px;font-size:8px;column-span:all}
+  .p-foot .mini-mark{font-family:var(--font-display);font-size:15px;letter-spacing:-.01em}
+
+  /* реальное фото-мокап из Airtable (PRODUCT MOCKUP) */
+  .mockup-photo{width:100%;max-width:700px;margin:8px auto 0}
+  .mockup-photo>img{width:100%;height:auto;display:block}
+  .mock-fallback{display:flex;gap:18px;justify-content:center;align-items:flex-start}
+  .mock-fallback .mockup{position:relative;width:300px;max-width:46vw}
+
+  /* ряд кружков для 1–2 базовых цветов */
+  .swatch-row{display:flex;gap:8px;justify-content:center;margin:0 auto 8px}
+  .swatch-row .swatch{margin:0}
+
+  /* ---------- состояния ---------- */
+  .state{max-width:560px;margin:60px auto;text-align:center;color:var(--ink-soft)}
+  .state h2{font-family:var(--font-display);font-weight:400;font-size:22px;margin:0 0 10px}
+  .spinner{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--ink);border-radius:50%;
+    margin:0 auto 16px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---------- модалки ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(20,18,14,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .overlay.open{display:flex}
+  .modal{background:#fff;border-radius:14px;max-width:480px;width:100%;padding:28px 28px 24px;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:pop .16s ease}
+  @keyframes pop{from{transform:translateY(8px);opacity:.6}to{transform:none;opacity:1}}
+  .modal h3{font-family:var(--font-display);font-weight:400;font-size:21px;margin:0 0 10px}
+  .modal p{color:var(--ink-soft);font-size:14.5px;margin:0 0 18px}
+  .modal .warn{color:var(--warn);font-weight:600}
+  .modal-actions{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:20px}
+  .field-label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+  .chip{font-size:13px;border:1.5px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;user-select:none;background:#fff}
+  .chip input{display:none}
+  .chip.on{border-color:var(--ink);background:var(--ink);color:#fff}
+  textarea{width:100%;min-height:104px;resize:vertical;font-family:inherit;font-size:14px;padding:12px;border:1.5px solid var(--line);border-radius:8px}
+  textarea:focus{outline:none;border-color:var(--ink)}
+  .err{color:var(--warn);font-size:13px;margin:6px 0 0;display:none}
+
+  @media(max-width:640px){
+    .p-specs{grid-template-columns:repeat(2,1fr)}
+    .spec{border-left:1px solid var(--line);border-top:1px solid var(--line)}
+    .spec:nth-child(odd){border-left:0}
+    .disclaimer{columns:1;max-width:100%}
+    .p-foot{flex-direction:column;align-items:flex-start}
+  }
 </style>
-</head>
-<body>
-  <div class="sheet" id="sheet"></div>
+
+<header>
+  <h1 class="wordmark">OPENHOUSE</h1>
+  <p class="subtitle">Please approve the design</p>
+  <p class="reply-note">Do not reply to the email. Approvals or comments must be submitted through the link.</p>
+  <div id="decision"></div>
+</header>
+
+<main id="content">
+  <div class="state"><div class="spinner"></div>Loading your proof…</div>
+</main>
+
+<!-- ===== МОДАЛКА: ПОДТВЕРЖДЕНИЕ APPROVE ===== -->
+<div class="overlay" id="approveModal" role="dialog" aria-modal="true" aria-labelledby="apTitle">
+  <div class="modal">
+    <h3 id="apTitle">Approve this proof?</h3>
+    <p><span class="warn">Once you approve, this design goes straight into production and can’t be changed.</span>
+      Please double-check spelling, colors, sizes, and artwork placement before confirming.</p>
+    <div class="modal-actions">
+      <button class="btn" data-close>Go back</button>
+      <button class="btn btn-primary" id="confirmApprove">Yes, approve</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== МОДАЛКА: ЗАПРОС ПРАВОК ===== -->
+<div class="overlay" id="changesModal" role="dialog" aria-modal="true" aria-labelledby="chTitle">
+  <div class="modal">
+    <h3 id="chTitle">Request changes</h3>
+    <p>Tell us what to adjust and we’ll send you an updated proof.</p>
+    <div class="field-label">What needs changing? (optional)</div>
+    <div class="chips" id="chips">
+      <label class="chip"><input type="checkbox" value="Artwork">Artwork</label>
+      <label class="chip"><input type="checkbox" value="Colors">Colors</label>
+      <label class="chip"><input type="checkbox" value="Placement & size">Placement &amp; size</label>
+      <label class="chip"><input type="checkbox" value="Text & spelling">Text &amp; spelling</label>
+      <label class="chip"><input type="checkbox" value="Product or quantity">Product / quantity</label>
+      <label class="chip"><input type="checkbox" value="Something else">Something else</label>
+    </div>
+    <div class="field-label">Details</div>
+    <textarea id="changeText" placeholder="e.g. Make the logo on the front about 10% smaller and move it up 1 cm."></textarea>
+    <div class="err" id="changeErr">Please add a short note so we know what to change.</div>
+    <div class="modal-actions">
+      <button class="btn" data-close>Cancel</button>
+      <button class="btn btn-primary" id="confirmChanges">Send change request</button>
+    </div>
+  </div>
+</div>
 
 <script>
-/* =========================================================================
-   INJECT POINT — Make подставляет d из Airtable.
-     d.orderNo        <- Design Request: Order
-     d.productName    <- Design Request: Request Name / Type of Request
-     d.productCode    <- Design Request: SKU_new (A001)
-     d.preparedFor    <- Design Request: Client
-     d.date           <- Design Request: Order Date
-     d.printMethod    <- метод (DTF/Screen/Embroider…)
-     d.proofVersion   <- V1/V2…
-     d.mockups[]      <- Design Request: PRODUCT MOCKUP  (URL или data:base64 — см. ниже)
-     d.measurementsRaw<- Product: Measurements (свободный текст; парсим size/width/length)
-     d.baseColors[]   <- name из Design Request Color Name (дедуп), hex из Product Colours HEX Equivalent
-     d.printColors[]  <- {name, multicolor:true} для digital/DTF
-     d.qty            <- Design Request: Quantity
-     d.variantRaw     <- Design Request: Variant ("S / White - 6 pcs\n…")  -> размеры
-     d.vectorArt[]    <- Artwork from Order (+ artworkSide/W/H — опц.)
-   ========================================================================= */
-const d = {
-  orderNo:"SHPF1319", productName:"Short Sleeve T-Shirt", productCode:"A001",
-  preparedFor:"Smug Mug", date:"06.22.26", printMethod:"DTF", proofVersion:"V1",
-  scale:"100%",
-  mockups:["https://v5.airtableusercontent.com/v3/u/54/54/1782842400000/LrgYKyqWefM088Vk75gQ7A/Geu7PQGB2l-ZOqCfT-zKko4KMD1eyd4MrOPbyCAKkIO_EUVc4D5wNw1qP2969ug_f-hLcGBU0AADDpfkwluHrYwymEwCM5Ywhh4swd_XgBnSqvgzNuy0lOwJZODmWrLXk-YSb5RoEf9fEE3YX5O-oQ/Y1w2dwM_5U7O0_WZ3SefENfLaT8yiLXsJz8I-aBmLo0"],
-  measurementsRaw:"Size L measures:  \nlength from top of collar to hem:  73 cm.\nwidth from extended sleeve to sleeve:  86.5 cm\n",
-  baseColors:[{name:"White", hex:"EFF0F1"}],     // hex из Product Colours
-  printColors:[{name:"Multicolor Digital", multicolor:true}],
+/* ================= CONFIG ================= */
+const USE_MOCK        = false;   // песочница. Для прода -> false
+const WEBHOOK_PROOF   = "https://hook.us2.make.com/k2a9wj9sq2y4s3webrd9vr0b13xypm9v";
+const WEBHOOK_DECISION= "https://hook.REGION.make.com/ВСТАВЬ_URL_СЦЕНАРИЯ_B";
+
+const MOCK = {
+  recordID:"rectkLj0T3LCQiOlI",
+  proofKind:"CLIENT PROOF",
+  productName:"Short Sleeve T-Shirt",
+  orderNo:"SHPF1319",
+  preparedFor:"Smug Mug",
+  date:"6/22/2026",                 // нарочно «как из Airtable» — страница сама сделает 06.22.26
+  printMethod:"DTF",
+  proofVersion:"V1",
+  productCode:"A001",
+  scale:"100% SCALE",
+  // ↓ как реально приходит из ноды Product (с переносами строк) — страница сама причешет
+  measureLine:"Size L measures:  \nlength from top of collar to hem:  73 cm.\nwidth from extended sleeve to sleeve:  86.5 cm\n",
+  // ↓ PRODUCT MOCKUP[1].url из ноды Design Request (для песочницы — реальная ссылка Smug Mug; ссылки Airtable временные)
+  mockupUrl:"https://v5.airtableusercontent.com/v3/u/54/54/1782842400000/LrgYKyqWefM088Vk75gQ7A/Geu7PQGB2l-ZOqCfT-zKko4KMD1eyd4MrOPbyCAKkIO_EUVc4D5wNw1qP2969ug_f-hLcGBU0AADDpfkwluHrYwymEwCM5Ywhh4swd_XgBnSqvgzNuy0lOwJZODmWrLXk-YSb5RoEf9fEE3YX5O-oQ/Y1w2dwM_5U7O0_WZ3SefENfLaT8yiLXsJz8I-aBmLo0",
+  vectorArtUrl:"https://v5.airtableusercontent.com/v3/u/54/54/1782842400000/bnaBgrJ6y6e35yOh3a7rVQ/mbsPsFn4jdgR51vcSuhcerkLftGShcu_Ox3I2oyTvjo4PX26ssZQb12bQHjWKEafOgkGkHYjczFw3QG8pN7E5POv9a793HwdzYe284a9qzQowDaxSTkJqxYGtYMdUMFvt-mf6kd_AWTnbj0Di6pcGaZzsIZDBSTbRVNxar__W24/elGYj5AaVSMjwLHfG_J43ET2FL-Hs0-F1d-zAJVngLo",
+  // ↓ массив имён цветов (после distinct в Make). 1 имя -> 1 кружок, 2 разных -> 2 кружка
+  baseColorNames:["White"],
+  baseColorHex:"#EFF0F1",          // HEX Equivalent основного цвета из ноды Product Color (+ "#")
+  printColor:{ name:"Multicolor Digital", rainbow:true },
   qty:30,
-  variantRaw:"S / White - 6 pcs\nM / White - 10 pcs\nL / White - 10 pcs\nXL / White - 4 pcs",
-  vectorArt:[], artworkSide:"Front", artworkW:"28", artworkH:"15.18"
+  // ↓ сырой текст из поля Variant — страница сама распарсит размеры
+  variantText:"S / White - 6 pcs\nM / White - 10 pcs\nL / White - 10 pcs\nXL / White - 4 pcs",
+  placement:"Front",
+  artworkSize:'W: 28 cm × H: 15.18 cm',
+  frontArtUrl:null,
+  status:"Completed", approvedDate:null, changeDate:null
 };
 
-const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const hex=h=>{if(!h)return"";h=String(h).trim().replace(/^#/,"");return /^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(h)?"#"+h:"";};
-const has=a=>Array.isArray(a)&&a.length>0;
+// чтобы быстро проверить «2 разных цвета» — раскомментируй:
+// MOCK.baseColorNames = ["White","Black"];
 
-// Product.Measurements (свободный текст) -> {size,width,length}
-function parseMeasurements(t){
-  if(!t)return null;
-  const sz=t.match(/size\s+([A-Za-z0-9]+)\s+measures/i);
-  const w =t.match(/width[^0-9]*([\d.]+)\s*cm/i);
-  const l =t.match(/length[^0-9]*([\d.]+)\s*cm/i);
-  if(!w&&!l)return null;
-  return {size:sz?sz[1]:"", width:w?w[1]:"", length:l?l[1]:""};
+/* ================= API ================= */
+const API = {
+  async getProof(id){
+    if(USE_MOCK) return {...MOCK, recordID:id||MOCK.recordID};
+    const r=await fetch(`${WEBHOOK_PROOF}?id=${encodeURIComponent(id)}`);
+    if(!r.ok) throw new Error("not_found");
+    return r.json();
+  },
+  async approve(id){
+    if(USE_MOCK){ await wait(700); return {ok:true,date:today()}; }
+    const r=await fetch(WEBHOOK_DECISION,{method:"POST",body:new URLSearchParams({id,action:"approve"})});
+    if(!r.ok) throw new Error("approve_failed");
+    return r.json().catch(()=>({ok:true,date:today()}));
+  },
+  async requestChanges(id,p){
+    if(USE_MOCK){ await wait(700); return {ok:true,date:today()}; }
+    const body=new URLSearchParams({id,action:"changes",note:p.note||"",categories:(p.categories||[]).join(", ")});
+    const r=await fetch(WEBHOOK_DECISION,{method:"POST",body});
+    if(!r.ok) throw new Error("changes_failed");
+    return r.json().catch(()=>({ok:true,date:today()}));
+  }
+};
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const today=()=>new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+
+/* дата -> MM.DD.YY через точки */
+function fmtDate(s){
+  if(!s) return "";
+  let m=String(s).match(/(\d{1,4})\D(\d{1,2})\D(\d{1,4})/);
+  if(!m) return s;
+  let a=m[1],b=m[2],c=m[3];
+  let mm,dd,yy;
+  if(a.length===4){ yy=a; mm=b; dd=c; } else { mm=a; dd=b; yy=c; }   // ISO vs US
+  yy=String(yy).slice(-2);
+  const p=n=>String(n).padStart(2,"0");
+  return `${p(mm)}.${p(dd)}.${p(yy)}`;
 }
-// Variant "S / White - 6 pcs" -> [{size,qty}]; иначе общий парсер "S: 6 / M: 10"
-function parseSizes(str){
-  if(!str)return[];
-  let rows=String(str).split(/\n+/).map(line=>{
-    const m=line.match(/^\s*([A-Za-z0-9]+)\s*\/.*?-\s*(\d+)\s*pcs/i); return m?{size:m[1],qty:+m[2]}:null;
-  }).filter(Boolean);
-  if(rows.length)return rows;
-  return String(str).split(/[\/,;\n]/).map(p=>{const m=p.match(/([A-Za-z0-9]+)\s*[:\-]?\s*(\d+)/);return m?{size:m[1],qty:+m[2]}:null;}).filter(Boolean);
+
+/* ================= мокап (боксовая тяжёлая футболка) ================= */
+function teeSVG(){
+  return `<svg viewBox="0 0 340 360" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCFBF9"/><stop offset="1" stop-color="#ECE9E2"/></linearGradient></defs>
+    <ellipse cx="170" cy="346" rx="120" ry="9" fill="#000" opacity=".05"/>
+    <path d="M120 44 C128 64 150 73 170 73 C190 73 212 64 220 44 L264 58 L314 152 L276 178 L264 150 L264 332 L76 332 L76 150 L64 178 L26 152 L76 58 Z"
+      fill="url(#tg)" stroke="#D7D1C4" stroke-width="1.6" stroke-linejoin="round"/>
+    <path d="M120 44 C128 64 150 73 170 73 C190 73 212 64 220 44" fill="none" stroke="#CFC8B8" stroke-width="3.2"/>
+    <path d="M76 58 L96 152" fill="none" stroke="#E4DFD3" stroke-width="1.2"/>
+    <path d="M264 58 L244 152" fill="none" stroke="#E4DFD3" stroke-width="1.2"/>
+    <path d="M120 300 C150 308 190 308 220 300" fill="none" stroke="#E4DFD3" stroke-width="1.2"/>
+    <rect x="158" y="88" width="24" height="9" rx="1.5" fill="#fff" stroke="#E0DBCF" stroke-width="1"/>
+  </svg>`;
 }
-// дедуп base по имени (одинаковые -> 1)
-function dedupeBase(list){
-  const seen=new Set(),out=[];
-  (list||[]).forEach(c=>{const k=(c.name||"").toLowerCase();if(!seen.has(k)){seen.add(k);out.push(c);}});
-  return out;
-}
-function swatch(c){
-  let bg = (c.multicolor||(!hex(c.hex)&&/multicolor|rainbow|digital/i.test(c.name||"")))
-    ? "conic-gradient(from 90deg,#e23b3b,#e2a23b,#e2dd3b,#5ad24f,#3bb6e2,#5a4fd2,#c14fd2,#e23b3b)"
-    : (hex(c.hex)||"#f0eee9");
-  return `<div class="sw"><div class="dot" style="background:${bg}"></div><div class="nm">${esc(c.name||"")}${c.idx?(' #'+c.idx):''}</div></div>`;
-}
-function colorCol(title,list,number){
-  if(!has(list))return"";
-  const items=list.map((c,i)=>number?Object.assign({},c,{idx:i+1}):c);
-  return `<div class="col"><h4>${title}</h4><div class="swatches">${items.map(swatch).join("")}</div></div>`;
+function artPlaceholder(){
+  return `<svg viewBox="0 0 120 64" xmlns="http://www.w3.org/2000/svg">
+    <rect width="120" height="64" rx="3" fill="#F4F2EC" stroke="#D7D1C4" stroke-dasharray="4 3"/>
+    <text x="60" y="36" text-anchor="middle" font-family="monospace" font-size="9" fill="#A89C84">ARTWORK</text>
+  </svg>`;
 }
 
-function render(){
-  const base=dedupeBase(d.baseColors);
-  const sizes=has(d.sizes)?d.sizes:parseSizes(d.variantRaw||d.sizesRaw);
-  const me=parseMeasurements(d.measurementsRaw);
+/* ================= цвета: имя -> hex (запасной вариант для 2-го цвета) =================
+   Основной (1-й) цвет всегда берёт реальный HEX из Airtable (baseColorHex).
+   Этот словарь нужен только если у заказа 2 разных цвета, а реальный hex
+   подтянут лишь для первого — тогда 2-й кружок красим по имени. */
+const COLOR_HEX = {
+  white:"#FFFFFF", black:"#1A1A1A", "heather gray":"#B6B6B6", "light heather":"#D9D9D9",
+  "warm gray":"#A89C8E", shark:"#5A5A5A", elephant:"#8C8C88", vanilla:"#F3ECD9",
+  sage:"#9CA98C", olive:"#6B6B43", ocean:"#2E6E8E", peacock:"#1F6F78",
+  "cool blue":"#5B7FA6", indigo:"#39406B", merlot:"#5C2230", cherry:"#A6243B",
+  citron:"#C9CF4E", orchid:"#9C6FA6", "pastel pink":"#F2C9D4", nubuck:"#C9A57B",
+  "dark chocolate":"#3B2A21"
+};
+function hexForName(name){return COLOR_HEX[String(name||"").trim().toLowerCase()] || "#CFC8B8";}
 
-  const mock=has(d.mockups)
-    ? `<div class="mockwrap">${d.mockups.map(u=>`<img src="${esc(u)}" alt="mockup" onerror="this.outerHTML='<div class=\\'mockph\\'>[ PRODUCT MOCKUP — ссылка истекла, передайте base64 ]</div>'">`).join("")}</div>`
-    : `<div class="mockwrap"><div class="mockph">[ PRODUCT MOCKUP — загрузите изображение ]</div></div>`;
+/* собираем 1–2 базовых цвета: distinct имён + hex (1-й из Airtable, прочие — по имени) */
+function buildBaseColors(d){
+  let names = Array.isArray(d.baseColorNames) ? d.baseColorNames
+            : (d.baseColor ? [d.baseColor.name] : []);
+  names = [...new Set(names.map(n=>String(n).trim()).filter(Boolean))];   // distinct, порядок сохраняем
+  if(!names.length) return [];
+  const airHex = d.baseColorHex || (d.baseColor && d.baseColor.hex) || null;
+  return names.map((name,i)=>({ name, hex: (i===0 && airHex && airHex!=="#") ? airHex : hexForName(name) }));
+}
 
-  const measure=me
-    ? `<div class="measure">PRODUCT MEASUREMENTS BASED ON SIZE ${esc(me.size)}: Width — ${esc(me.width)} cm, Length — ${esc(me.length)} cm</div>`
-    : "";
+/* Measurements из Airtable приходят многострочными — причёсываем в одну строку */
+function formatMeasure(s){
+  if(!s) return "";
+  return String(s).split(/\r?\n/).map(x=>x.trim()).filter(Boolean)
+    .join("  ·  ").replace(/\s{2,}/g," ").trim().toUpperCase();
+}
 
-  const vector = has(d.vectorArt) ? `<div class="col grow"><h4>Client Vector Artwork</h4>
-      <div class="vector"><div class="art">${d.vectorArt.map(u=>`<img src="${esc(u)}">`).join("")||"ARTWORK"}</div>
-      <div class="side"><div class="lbl">${esc(d.artworkSide||"")}</div>${(d.artworkW||d.artworkH)?`<div class="dim">W: ${esc(d.artworkW)} cm × H: ${esc(d.artworkH)} cm</div>`:""}</div></div></div>` : "";
+/* размеры берём из массива sizes, иначе парсим текст Variant ("S / White - 6 pcs") */
+function parseSizes(d){
+  if(Array.isArray(d.sizes) && d.sizes.length) return d.sizes;
+  const txt = d.variantText || "";
+  return txt.split(/\r?\n|\|\|/).map(l=>l.trim()).filter(Boolean).map(line=>{
+    const size=(line.split("/")[0]||"").trim();
+    const m=line.match(/(\d+)\s*pcs?/i) || line.match(/-\s*(\d+)\s*$/);
+    return { size, qty: m?parseInt(m[1],10):"" };
+  }).filter(r=>r.size);
+}
 
-  const band=[
-    colorCol("Base Color", base, true),
-    colorCol("Print Color", d.printColors, false),
-    colorCol("Thread Color", d.threadColors, false),
-    (d.qty!=null&&d.qty!=="")?`<div class="col"><h4>Qty : ${esc(d.qty)}</h4></div>`:"",
-    has(sizes)?`<div class="col"><h4>Size Breakdown</h4><div class="sizes">${sizes.map(s=>`<div><span class="s">${esc(s.size)}</span>${esc(s.qty)}</div>`).join("")}</div></div>`:"",
-    vector
-  ].join("");
+/* ================= рендер пруфа ================= */
+function renderProof(d){
+  const front=d.frontArtUrl?`<div class="art"><img src="${d.frontArtUrl}" alt="Artwork"></div>`:`<div class="art">${artPlaceholder()}</div>`;
+  const vector=d.vectorArtUrl?`<div class="v-art"><img src="${d.vectorArtUrl}" alt="Vector artwork"></div>`
+    :(d.frontArtUrl?`<div class="v-art"><img src="${d.frontArtUrl}" alt="Vector artwork"></div>`:`<div class="v-art">${artPlaceholder()}</div>`);
+  const printSwatch=d.printColor.rainbow?`<div class="swatch rainbow"></div>`:`<div class="swatch" style="background:${d.printColor.hex||'#000'}"></div>`;
 
-  document.getElementById("sheet").innerHTML=`
-    <div class="head">
-      <div class="title">CLIENT PROOF <em>${esc(d.productName||"")}</em></div>
-      <div class="orderno">ORDER NO.<b>${esc(d.orderNo||"")}</b></div>
+  /* --- мокап: реальное фото PRODUCT MOCKUP, при ошибке загрузки -> SVG-футболка --- */
+  const mockupBlock = d.mockupUrl
+    ? `<div class="mockup-photo">
+         <img src="${d.mockupUrl}" alt="Product mockup"
+              onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+         <div class="mock-fallback" style="display:none">
+           <div class="mockup">${teeSVG()}${front}</div><div class="mockup">${teeSVG()}</div>
+         </div>
+       </div>`
+    : `<div class="mock-fallback">
+         <div class="mockup">${teeSVG()}${front}</div><div class="mockup">${teeSVG()}</div>
+       </div>`;
+
+  /* --- базовый цвет: 1 кружок если один цвет, 2 кружка если два разных --- */
+  const baseColors  = buildBaseColors(d);
+  const baseSwatches= baseColors.length
+    ? baseColors.map(c=>`<div class="swatch" style="background:${c.hex}"></div>`).join("")
+    : `<div class="swatch"></div>`;
+  const baseNames   = baseColors.length ? baseColors.map(c=>esc(c.name)).join(" / ") : "—";
+
+  const sizeRows = parseSizes(d).map(s=>`<span class="s">${esc(s.size)}</span><span>${s.qty}</span>`).join("");
+
+  const keyIcon=`<svg class="oh-key" viewBox="0 0 24 12" fill="none">
+      <circle cx="5" cy="6" r="3.4" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="8.4" y1="6" x2="22" y2="6" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="17.5" y1="6" x2="17.5" y2="9.6" stroke="currentColor" stroke-width="1.4"/>
+      <line x1="20.5" y1="6" x2="20.5" y2="8.8" stroke="currentColor" stroke-width="1.4"/></svg>`;
+
+  return `
+  <div class="proof-wrap"><div class="proof">
+    <div class="p-head">
+      <div><span class="p-kind">${esc(d.proofKind)}</span><span class="p-product">${esc(d.productName)}</span></div>
+      <div class="p-order">ORDER NO.<b>${esc(d.orderNo)}</b></div>
     </div>
-    <hr class="rule">
-    <div class="metarow">
-      <div class="meta">
-        <span class="lbl"><span>Prepared for:</span> ${esc((d.preparedFor||'').toUpperCase())}</span><span class="sep lbl">/</span>
-        <span class="lbl"><span>Date:</span> ${esc(d.date||"")}</span><span class="sep lbl">/</span>
-        <span class="lbl"><span>Print method:</span> ${esc(d.printMethod||"")}</span><span class="sep lbl">/</span>
-        <span class="lbl"><span>Proof:</span> ${esc(d.proofVersion||"")}</span>
+
+    <div class="p-meta">
+      <div class="left">
+        PREPARED FOR: ${esc(d.preparedFor)}<span class="sep">/</span>
+        DATE: ${fmtDate(d.date)}<span class="sep">/</span>
+        PRINT METHOD: ${esc(d.printMethod)}<span class="sep">/</span>
+        PROOF: ${esc(d.proofVersion)}
       </div>
-      <div class="pcode lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="14" r="4"/><path d="M11 14h9M17 14v4M20 14v3"/></svg>PRODUCT ${esc(d.productCode||"")}</div>
+      <div class="right">${keyIcon}PRODUCT ${esc(d.productCode)}</div>
     </div>
-    <hr class="rule">
-    <div class="center"><div class="mocklbl">PRODUCT MOCKUP</div><div class="scale">${esc(d.scale||"100%")} SCALE</div></div>
-    ${mock}
-    ${measure}
-    <hr class="rule">
-    <div class="band">${band}</div>
-    <div class="foot">
-      <div class="disclaimer">Colors shown on screen are approximate and may differ from printed or stitched output; Pantone references are matched visually, not exact. By approving, you confirm all details are correct and authorize production — once approved, changes are not possible. Measurements are based on the listed reference size and may vary slightly across the run.</div>
-      <div class="wordmark">OPENHOUSE</div>
-    </div>`;
+
+    <div class="p-mockup-label">PRODUCT MOCKUP<small>${esc(d.scale)}</small></div>
+    ${mockupBlock}
+    <div class="measure">${esc(formatMeasure(d.measureLine))}</div>
+
+    <div class="p-specs">
+      <div class="spec center"><h4>Base Color</h4>
+        <div class="swatch-row">${baseSwatches}</div>
+        <div class="val">${baseNames}</div></div>
+      <div class="spec center"><h4>Print Color</h4>${printSwatch}
+        <div class="val">${esc(d.printColor.name)}</div></div>
+      <div class="spec"><h4>QTY : ${esc(d.qty)}</h4></div>
+      <div class="spec"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>
+      <div class="spec"><h4>Client Vector Artwork</h4>
+        <div class="vector">${vector}
+          <div class="v-meta"><b>${esc(d.placement).toUpperCase()}</b>${esc(d.artworkSize).replace(/\n/g,"<br>")}</div>
+        </div></div>
+    </div>
+
+    <div class="p-foot">
+      <div class="disclaimer"><b>DISCLAIMER</b>
+        Colors shown on screen are approximate and may differ from printed or stitched output. This proof confirms
+        layout, placement, sizing, spelling, and color reference only. By approving, you confirm all details are
+        correct and authorize production. Once approved, changes are not possible. Measurements are based on the
+        listed reference size and may vary slightly across the run.</div>
+      <div class="mini-mark">OPENHOUSE</div>
+    </div>
+  </div></div>`;
 }
-render();
+
+/* ================= кнопки / статус ================= */
+function renderDecision(d){
+  const box=document.getElementById("decision");
+  if(d.status==="Proof Approved"||d.status==="Approved"){
+    box.innerHTML=`<div class="resolved approved">Approved${d.approvedDate?` on ${d.approvedDate}`:""}. Thanks — your design is now in production.</div>`;return;
+  }
+  if(d.status==="Revision Requested"){
+    box.innerHTML=`<div class="resolved changes">We received your change request${d.changeDate?` on ${d.changeDate}`:""}. An updated proof is on the way.</div>`;return;
+  }
+  box.innerHTML=`<div class="actions">
+      <button class="btn" id="makeChanges">Make changes</button>
+      <button class="btn btn-primary" id="approve">Approve</button></div>`;
+  document.getElementById("approve").onclick=()=>openModal("approveModal");
+  document.getElementById("makeChanges").onclick=()=>openModal("changesModal");
+}
+
+/* ================= модалки ================= */
+function openModal(id){document.getElementById(id).classList.add("open");}
+function closeModal(el){el.classList.remove("open");}
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=e=>closeModal(e.target.closest(".overlay")));
+document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{if(e.target===o)closeModal(o);}));
+document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".overlay.open").forEach(closeModal);});
+document.querySelectorAll("#chips .chip").forEach(c=>c.addEventListener("click",()=>{const i=c.querySelector("input");i.checked=!i.checked;c.classList.toggle("on",i.checked);}));
+
+let CURRENT=null;
+document.getElementById("confirmApprove").onclick=async()=>{
+  const b=document.getElementById("confirmApprove");b.disabled=true;b.textContent="Approving…";
+  try{const res=await API.approve(CURRENT.recordID);closeModal(document.getElementById("approveModal"));
+    CURRENT.status="Proof Approved";CURRENT.approvedDate=res.date||today();renderDecision(CURRENT);window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e){b.disabled=false;b.textContent="Yes, approve";alert("Something went wrong sending your approval. Please try again, or contact your account manager.");}
+};
+document.getElementById("confirmChanges").onclick=async()=>{
+  const t=document.getElementById("changeText").value.trim();const err=document.getElementById("changeErr");
+  if(!t){err.style.display="block";return;}err.style.display="none";
+  const cats=[...document.querySelectorAll("#chips input:checked")].map(i=>i.value);
+  const b=document.getElementById("confirmChanges");b.disabled=true;b.textContent="Sending…";
+  try{const res=await API.requestChanges(CURRENT.recordID,{note:t,categories:cats});closeModal(document.getElementById("changesModal"));
+    CURRENT.status="Revision Requested";CURRENT.changeDate=res.date||today();renderDecision(CURRENT);window.scrollTo({top:0,behavior:"smooth"});
+  }catch(e){b.disabled=false;b.textContent="Send change request";alert("Something went wrong sending your request. Please try again, or contact your account manager.");}
+};
+
+/* ================= утилиты + загрузка ================= */
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function getId(){return new URLSearchParams(location.search).get("id");}
+(async function init(){
+  const id=getId();const content=document.getElementById("content");
+  if(!id&&!USE_MOCK){document.getElementById("decision").innerHTML="";
+    content.innerHTML=`<div class="state"><h2>Link is missing its proof</h2>Please open the link from your email, or contact your account manager.</div>`;return;}
+  try{CURRENT=await API.getProof(id);content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);}
+  catch(e){document.getElementById("decision").innerHTML="";
+    content.innerHTML=`<div class="state"><h2>We couldn’t find this proof</h2>It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;}
+})();
 </script>
-</body>
-</html>
