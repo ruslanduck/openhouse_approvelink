@@ -103,11 +103,18 @@
 
   .measure{text-align:center;color:var(--muted);font-size:9.5px;letter-spacing:.05em;margin:10px 0 0}
 
-  /* нижняя сетка */
-  .p-specs{display:grid;grid-template-columns:0.9fr 0.9fr 0.7fr 1.05fr 2fr;
+  /* нижняя сетка: 3 крупных раздела — [цвета+QTY] | [vector artwork] | [order notes] */
+  .p-specs{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr) minmax(0,1.15fr);
     border-top:1.5px solid var(--line-ink);margin-top:14px}
-  .spec{padding:14px 16px 22px;border-left:1px solid var(--line)}
-  .spec:first-child{border-left:0}
+  .section{min-width:0}
+  .section+.section{border-left:1px solid var(--line)}
+  .section.s-colors{display:flex}
+  .section.s-colors>.spec{flex:1;min-width:0}
+  .section.s-colors>.spec+.spec{border-left:1px solid var(--line)}
+  .spec{padding:14px 16px 22px}
+  .qty-note{font-size:9px;line-height:1.5;color:var(--muted);margin-top:12px;max-width:150px}
+  .notes{font-size:10.5px;line-height:1.65;color:var(--ink-soft)}
+  .notes.empty{color:var(--muted)}
   .spec h4{margin:0 0 12px;font-size:9.5px;letter-spacing:.13em;color:var(--ink-soft);font-weight:700;text-transform:uppercase}
   .spec.center{text-align:center}
   .spec.center h4{text-align:center}
@@ -258,6 +265,8 @@ const MOCK = {
   variantText:"S / White - 6 pcs\nM / White - 10 pcs\nL / White - 10 pcs\nXL / White - 4 pcs",
   placement:"Front",
   artworkSize:'W: 28 cm × H: 15.18 cm',
+  // ↓ Client Order Notes = Additional Notes (from Artwork Submission); переносы -> || (страница вернёт их в строки)
+  clientOrderNotes:"Please match embroidery to brand navy.||Keep the wordmark centered on the front panel.",
   frontArtUrl:null,
   status:"Completed", approvedDate:null, changeDate:null
 };
@@ -452,7 +461,16 @@ function renderProof(d){
                    : (legacyPrint ? `${printSwatch}<div class="val">${esc(d.printColor&&d.printColor.name||"")}</div>`
                                   : `<div class="swatch"></div><div class="val">—</div>`);
 
-  const sizeRows = parseSizes(d).map(s=>`<span class="s">${esc(s.size)}</span><span>${s.qty}</span>`).join("");
+  /* размеры показываем только если это реальные размеры (S/M/L/XL...), для OS/one-size — просто QTY */
+  const allSizes  = parseSizes(d);
+  const realSizes = allSizes.filter(s=>!/^(OS|OSFA|ONE ?SIZE)$/i.test(String(s.size)));
+  const showSizes = realSizes.length>0;
+  const sizeRows  = realSizes.map(s=>`<span class="s">${esc(s.size)}</span><span>${s.qty}</span>`).join("");
+
+  /* обязательная заметка под QTY + заметки клиента (Additional Notes) */
+  const qtyNote   = d.qtyNote || "Please note colors will be best match to Pantones";
+  const notesRaw  = String(d.clientOrderNotes||"").trim();
+  const notesHtml = notesRaw ? esc(notesRaw).replace(/\s*\|\|\s*|\r?\n/g,"<br>") : "—";
 
   const keyIcon=`<svg class="oh-key" viewBox="0 0 24 12" fill="none">
       <circle cx="5" cy="6" r="3.4" stroke="currentColor" stroke-width="1.4"/>
@@ -482,16 +500,25 @@ function renderProof(d){
     <div class="measure">${esc(formatMeasure(d.measureLine))}</div>
 
     <div class="p-specs">
-      <div class="spec center"><h4>Base Color</h4>
-        <div class="swatch-row">${baseSwatches}</div>
-        <div class="val">${baseNames}</div></div>
-      <div class="spec center"><h4>${esc(accentTitle)}</h4>${accentCell}</div>
-      <div class="spec"><h4>QTY : ${esc(d.qty)}</h4></div>
-      <div class="spec"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>
-      <div class="spec"><h4>Client Vector Artwork</h4>
-        <div class="vector">${vector}
-          <div class="v-meta"><b>${esc(d.placement).toUpperCase()}</b>${esc(d.artworkSize).replace(/\n/g,"<br>")}</div>
-        </div></div>
+      <div class="section s-colors">
+        <div class="spec center"><h4>Base Color</h4>
+          <div class="swatch-row">${baseSwatches}</div>
+          <div class="val">${baseNames}</div></div>
+        <div class="spec center"><h4>${esc(accentTitle)}</h4>${accentCell}</div>
+        <div class="spec"><h4>QTY : ${esc(d.qty)}</h4>
+          <div class="qty-note">${esc(qtyNote)}</div></div>
+        ${showSizes?`<div class="spec"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>`:""}
+      </div>
+      <div class="section s-vector">
+        <div class="spec"><h4>Client Vector Artwork</h4>
+          <div class="vector">${vector}
+            <div class="v-meta"><b>${esc(d.placement).toUpperCase()}</b>${esc(d.artworkSize).replace(/\n/g,"<br>")}</div>
+          </div></div>
+      </div>
+      <div class="section s-notes">
+        <div class="spec"><h4>Client Order Notes</h4>
+          <div class="notes${notesRaw?"":" empty"}">${notesHtml}</div></div>
+      </div>
     </div>
 
     <div class="p-foot">
