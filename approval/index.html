@@ -262,9 +262,14 @@ const MOCK = {
 const API = {
   async getProof(id){
     if(USE_MOCK) return {...MOCK, recordID:id||MOCK.recordID};
-    const r=await fetch(`${WEBHOOK_PROOF}?id=${encodeURIComponent(id)}`);
-    if(!r.ok) throw new Error("not_found");
-    return r.json();
+    let r;
+    try{ r=await fetch(`${WEBHOOK_PROOF}?id=${encodeURIComponent(id)}`); }
+    catch(e){ throw new Error("network_or_cors"); }   // fetch упал -> сеть или CORS
+    if(!r.ok) throw new Error("http_"+r.status);
+    const raw=await r.text();
+    if(!raw || !raw.trim()) throw new Error("empty_response");
+    try{ return JSON.parse(raw); }
+    catch(_){ return JSON.parse(raw.replace(/[\r\n\t]+/g," ")); }  // подстраховка от сырых переносов в JSON
   },
   async approve(id){
     if(USE_MOCK){ await wait(700); return {ok:true,date:today()}; }
@@ -334,8 +339,10 @@ function hexForName(name){return COLOR_HEX[String(name||"").trim().toLowerCase()
 
 /* собираем 1–2 базовых цвета: distinct имён + hex (1-й из Airtable, прочие — по имени) */
 function buildBaseColors(d){
-  let names = Array.isArray(d.baseColorNames) ? d.baseColorNames
-            : (d.baseColor ? [d.baseColor.name] : []);
+  let names;
+  if(Array.isArray(d.baseColorNames))                                     names = d.baseColorNames;
+  else if(typeof d.baseColorNames==="string" && d.baseColorNames.trim())  names = d.baseColorNames.split(/\|\||,/);  // "White||Black"
+  else                                                                    names = d.baseColor ? [d.baseColor.name] : [];
   names = [...new Set(names.map(n=>String(n).trim()).filter(Boolean))];   // distinct, порядок сохраняем
   if(!names.length) return [];
   const airHex = d.baseColorHex || (d.baseColor && d.baseColor.hex) || null;
@@ -345,19 +352,18 @@ function buildBaseColors(d){
 /* Measurements из Airtable приходят многострочными — причёсываем в одну строку */
 function formatMeasure(s){
   if(!s) return "";
-  return String(s).split(/\r?\n/).map(x=>x.trim()).filter(Boolean)
+  return String(s).split(/\r?\n|\|\|/).map(x=>x.trim()).filter(Boolean)
     .join("  ·  ").replace(/\s{2,}/g," ").trim().toUpperCase();
 }
 
-/* размеры берём из массива sizes, иначе парсим текст Variant ("S / White - 6 pcs") */
+/* размеры: берём из sizes[], иначе выдёргиваем все "РАЗМЕР / цвет - N pcs" из строки
+   (regex не зависит от разделителя — работает и с пробелами, и с ||, и с переносами) */
 function parseSizes(d){
   if(Array.isArray(d.sizes) && d.sizes.length) return d.sizes;
-  const txt = d.variantText || "";
-  return txt.split(/\r?\n|\|\|/).map(l=>l.trim()).filter(Boolean).map(line=>{
-    const size=(line.split("/")[0]||"").trim();
-    const m=line.match(/(\d+)\s*pcs?/i) || line.match(/-\s*(\d+)\s*$/);
-    return { size, qty: m?parseInt(m[1],10):"" };
-  }).filter(r=>r.size);
+  const txt = String(d.variantText||"");
+  const rows=[]; const re=/([A-Za-z0-9]{1,4})\s*\/[^-\/]*-\s*(\d+)\s*pcs?/gi; let m;
+  while((m=re.exec(txt))!==null) rows.push({ size:m[1].toUpperCase(), qty:parseInt(m[2],10) });
+  return rows;   // пусто -> размерной таблицы нет, общий тираж показывает поле QTY
 }
 
 /* ================= рендер пруфа ================= */
@@ -490,7 +496,7 @@ function getId(){return new URLSearchParams(location.search).get("id");}
   if(!id&&!USE_MOCK){document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>Link is missing its proof</h2>Please open the link from your email, or contact your account manager.</div>`;return;}
   try{CURRENT=await API.getProof(id);content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);}
-  catch(e){document.getElementById("decision").innerHTML="";
+  catch(e){console.error("proof load failed:",e);document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>We couldn’t find this proof</h2>It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;}
 })();
 </script>
