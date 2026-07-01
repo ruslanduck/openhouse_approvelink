@@ -37,7 +37,7 @@
     --btn-ink:#15140F;
     --ok:#3C6E47;
     --radius:9px;
-    --maxw:1040px;
+    --maxw:1200px;
   }
 
   *{box-sizing:border-box}
@@ -104,12 +104,14 @@
   .measure{text-align:center;color:var(--muted);font-size:9.5px;letter-spacing:.05em;margin:10px 0 0}
 
   /* нижняя сетка: 3 крупных раздела — [цвета+QTY] | [vector artwork] | [order notes] */
-  .p-specs{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1fr) minmax(0,1.15fr);
+  .p-specs{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(0,1.55fr) minmax(0,1fr);
     border-top:1.5px solid var(--line-ink);margin-top:14px}
   .section{min-width:0}
   .section+.section{border-left:1px solid var(--line)}
   .section.s-colors{display:flex}
   .section.s-colors>.spec{flex:1;min-width:0}
+  /* Size Breakdown — своя колонка с разделителем, как у остальных разделов */
+  .section.s-colors>.spec.s-sizes{flex:0 0 auto;border-left:1px solid var(--line)}
   .spec{padding:14px 16px 22px}
   .qty-note{font-size:9px;line-height:1.5;color:var(--muted);margin-top:12px;max-width:150px}
   .notes{font-size:10.5px;line-height:1.65;color:var(--ink-soft)}
@@ -122,10 +124,12 @@
   .spec .val{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)}
   .sizes{display:grid;grid-template-columns:auto 1fr;gap:3px 22px;font-size:13px;font-variant-numeric:tabular-nums}
   .sizes .s{color:var(--ink-soft);font-weight:600}
-  .vector{display:flex;gap:0;align-items:center}
-  .vector .v-art{width:88px;flex:0 0 88px}
-  .vector .v-art img{width:100%;display:block}
-  .vector .v-meta{font-size:9.5px;color:var(--ink-soft);line-height:1.6;padding-left:16px;border-left:1px solid var(--line);margin-left:14px}
+  .vector{display:flex;gap:0;align-items:flex-start}
+  .vector .v-arts{display:flex;flex-wrap:wrap;gap:12px;flex:1 1 auto;min-width:0}
+  .vector .v-art{width:120px;max-width:100%}
+  .vector .v-art img{width:100%;height:auto;display:block;border:1px solid var(--line)}
+  .vector .v-art svg{width:100%;height:auto;display:block}
+  .vector .v-meta{font-size:9.5px;color:var(--ink-soft);line-height:1.6;padding-left:16px;border-left:1px solid var(--line);margin-left:14px;flex:0 0 auto}
   .vector .v-meta b{display:block;letter-spacing:.12em;margin-bottom:4px;color:var(--ink)}
   .v-sub{font-size:9px;color:var(--muted);letter-spacing:.04em;margin:-6px 0 12px}
   .vector .v-meta .vm-row{margin-bottom:9px}
@@ -377,7 +381,7 @@ function parseColors(d){
   if(typeof raw!=="string" || !raw.trim()) return [];
   return raw.split(/;;|\r?\n/).map(s=>s.trim()).filter(Boolean).map(row=>{
     const p = row.split("|").map(x=>(x||"").trim());
-    return { name:p[0]||"", hex:p[1]||"", type:(p[2]||"").toLowerCase() };
+    return { name:p[0]||"", hex:p[1]||"", type:(p[2]||"").trim().toLowerCase() };
   }).filter(c=>c.hex||c.name);
 }
 
@@ -413,11 +417,35 @@ function parseSizes(d){
   return rows;
 }
 
+/* ================= картинки: одна строка -> список ссылок =================
+   Make может склеить несколько вложений в одно поле (как цвета через ;;),
+   тогда в src попадали сразу все ссылки и картинка ломалась. Здесь режем
+   строку на отдельные URL по любым разделителям (;; || , перенос, пробел),
+   поддерживаем и массив вложений Airtable [{url}], и дедупим. */
+function parseImageUrls(val){
+  if(!val) return [];
+  if(Array.isArray(val)){
+    return [...new Set(val.map(x=>typeof x==="string"?x:(x&&(x.url||x.URL||x.src||x.thumbnails&&x.thumbnails.full&&x.thumbnails.full.url))||"")
+      .map(s=>String(s).trim()).filter(Boolean))];
+  }
+  return [...new Set(String(val).split(/;;|\|\||[\n\r,]+|\s+/)
+    .map(s=>s.trim()).filter(s=>/^https?:\/\//i.test(s)))];
+}
+/* собираем все фото Client Vector Artwork из возможных полей */
+function collectVectorImages(d){
+  let urls=[];
+  ["vectorArtUrl","vectorArtUrls","vectorArt","frontArtUrl","backArtUrl","artworkUrl","artworkUrls"]
+    .forEach(k=>{ urls=urls.concat(parseImageUrls(d[k])); });
+  return [...new Set(urls)];
+}
+
 /* ================= рендер пруфа ================= */
 function renderProof(d){
   const front=d.frontArtUrl?`<div class="art"><img src="${d.frontArtUrl}" alt="Artwork"></div>`:`<div class="art">${artPlaceholder()}</div>`;
-  const vector=d.vectorArtUrl?`<div class="v-art"><img src="${d.vectorArtUrl}" alt="Vector artwork"></div>`
-    :(d.frontArtUrl?`<div class="v-art"><img src="${d.frontArtUrl}" alt="Vector artwork"></div>`:`<div class="v-art">${artPlaceholder()}</div>`);
+  const vectorImgs = collectVectorImages(d);
+  const vector = vectorImgs.length
+    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(u)}" alt="Vector artwork" loading="lazy"></div>`).join("")
+    : `<div class="v-art">${artPlaceholder()}</div>`;
   const printSwatch=d.printColor?(d.printColor.rainbow?`<div class="swatch rainbow"></div>`:`<div class="swatch" style="background:${d.printColor.hex||'#000'}"></div>`):"";
 
   /* --- цвета: новый формат (Design Colors) или старый (baseColorNames/printColor) --- */
@@ -514,12 +542,13 @@ function renderProof(d){
         <div class="spec center"><h4>${esc(accentTitle)}</h4>${accentCell}</div>
         <div class="spec"><h4>QTY : ${esc(d.qty)}</h4>
           <div class="qty-note">${esc(qtyNote)}</div></div>
-        ${showSizes?`<div class="spec"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>`:""}
+        ${showSizes?`<div class="spec s-sizes"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>`:""}
       </div>
       <div class="section s-vector">
         <div class="spec"><h4>Client Vector Artwork</h4>
           <div class="v-sub">Artwork placed on product at 100% scale</div>
-          <div class="vector">${vector}
+          <div class="vector">
+            <div class="v-arts">${vector}</div>
             <div class="v-meta">
               <div class="vm-row"><b>FRONT</b><span>${esc(frontSize)||"—"}</span></div>
               ${backSize?`<div class="vm-row"><b>BACK</b><span>${esc(backSize)}</span></div>`:""}
