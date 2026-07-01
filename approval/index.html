@@ -135,8 +135,13 @@
   .mock-fallback .mockup{position:relative;width:300px;max-width:46vw}
 
   /* ряд кружков для 1–2 базовых цветов */
-  .swatch-row{display:flex;gap:8px;justify-content:center;margin:0 auto 8px}
+  .swatch-row{display:flex;gap:14px;justify-content:center;align-items:flex-start;margin:0 auto 8px;flex-wrap:wrap}
   .swatch-row .swatch{margin:0}
+  /* кружок с подписью (thread / imprint и т.п.) */
+  .swatch-item{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .swatch-item .swatch{margin:0}
+  .swatch-item .sw-name{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+  .swatch-item .sw-type{font-size:8px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
 
   /* ---------- состояния ---------- */
   .state{max-width:560px;margin:60px auto;text-align:center;color:var(--ink-soft)}
@@ -242,9 +247,11 @@ const MOCK = {
   // ↓ PRODUCT MOCKUP[1].url из ноды Design Request (для песочницы — реальная ссылка Smug Mug; ссылки Airtable временные)
   mockupUrl:"https://v5.airtableusercontent.com/v3/u/54/54/1782842400000/LrgYKyqWefM088Vk75gQ7A/Geu7PQGB2l-ZOqCfT-zKko4KMD1eyd4MrOPbyCAKkIO_EUVc4D5wNw1qP2969ug_f-hLcGBU0AADDpfkwluHrYwymEwCM5Ywhh4swd_XgBnSqvgzNuy0lOwJZODmWrLXk-YSb5RoEf9fEE3YX5O-oQ/Y1w2dwM_5U7O0_WZ3SefENfLaT8yiLXsJz8I-aBmLo0",
   vectorArtUrl:"https://v5.airtableusercontent.com/v3/u/54/54/1782842400000/bnaBgrJ6y6e35yOh3a7rVQ/mbsPsFn4jdgR51vcSuhcerkLftGShcu_Ox3I2oyTvjo4PX26ssZQb12bQHjWKEafOgkGkHYjczFw3QG8pN7E5POv9a793HwdzYe284a9qzQowDaxSTkJqxYGtYMdUMFvt-mf6kd_AWTnbj0Di6pcGaZzsIZDBSTbRVNxar__W24/elGYj5AaVSMjwLHfG_J43ET2FL-Hs0-F1d-zAJVngLo",
-  // ↓ массив имён цветов (после distinct в Make). 1 имя -> 1 кружок, 2 разных -> 2 кружка
+  // ↓ НОВЫЙ формат: строка цветов из Design Colors "Name|Hex|Type;;..." (Type: Base/Thread/Imprint)
+  colors:"Ivory|#FFFFF0|Base;;Navy|#1F2A44|Base;;Red|#953012|Thread",
+  // (старые поля ниже оставлены для обратной совместимости — если colors пустой, страница откатится к ним)
   baseColorNames:["White"],
-  baseColorHex:"#EFF0F1",          // HEX Equivalent основного цвета из ноды Product Color (+ "#")
+  baseColorHex:"#EFF0F1",
   printColor:{ name:"Multicolor Digital", rainbow:true },
   qty:30,
   // ↓ сырой текст из поля Variant — страница сама распарсит размеры
@@ -349,6 +356,30 @@ function buildBaseColors(d){
   return names.map((name,i)=>({ name, hex: (i===0 && airHex && airHex!=="#") ? airHex : hexForName(name) }));
 }
 
+/* новый формат: строка цветов "Name|Hex|Type;;Name|Hex|Type" из Design Colors (Type: Base/Thread/Imprint) */
+function parseColors(d){
+  const raw = d.colors;
+  if(Array.isArray(raw)) return raw.map(c=>({name:String(c.name||c.Name||"").trim(),hex:String(c.hex||c.Hex||"").trim(),type:String(c.type||c.Type||"").trim().toLowerCase()}));
+  if(typeof raw!=="string" || !raw.trim()) return [];
+  return raw.split(/;;|\r?\n/).map(s=>s.trim()).filter(Boolean).map(row=>{
+    const p = row.split("|").map(x=>(x||"").trim());
+    return { name:p[0]||"", hex:p[1]||"", type:(p[2]||"").toLowerCase() };
+  }).filter(c=>c.hex||c.name);
+}
+
+/* запасное имя цвета по hex (используется, только если Name пустой) */
+function hexToName(hex){
+  const h=String(hex||"").replace(/[^0-9a-f]/gi,"").toLowerCase(); if(h.length<6) return "";
+  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  const table=[["Black",0,0,0],["White",255,255,255],["Ivory",255,255,240],["Cream",245,235,215],
+    ["Navy",25,32,72],["Blue",40,90,170],["Sky",120,170,220],["Red",165,45,25],["Maroon",110,30,30],
+    ["Green",45,120,65],["Olive",110,110,50],["Yellow",240,205,60],["Orange",230,140,40],
+    ["Brown",100,65,40],["Tan",190,160,120],["Gray",128,128,128],["Charcoal",60,60,60],["Pink",225,150,175]];
+  let best="",bd=1e9;
+  for(const [n,rr,gg,bb] of table){const dd=(r-rr)**2+(g-gg)**2+(b-bb)**2; if(dd<bd){bd=dd;best=n;}}
+  return best;
+}
+
 /* Measurements из Airtable приходят многострочными — причёсываем в одну строку */
 function formatMeasure(s){
   if(!s) return "";
@@ -356,14 +387,16 @@ function formatMeasure(s){
     .join("  ·  ").replace(/\s{2,}/g," ").trim().toUpperCase();
 }
 
-/* размеры: берём из sizes[], иначе выдёргиваем все "РАЗМЕР / цвет - N pcs" из строки
-   (regex не зависит от разделителя — работает и с пробелами, и с ||, и с переносами) */
+/* размеры: из sizes[], иначе выдёргиваем "РАЗМЕР / … - N pcs".
+   Размер берём только из списка реальных размеров, поэтому "OS / Vintage White / Navy - 100 pcs"
+   даёт OS=100, а не кусок имени цвета. Разделитель не важен (пробел / || / перенос). */
 function parseSizes(d){
   if(Array.isArray(d.sizes) && d.sizes.length) return d.sizes;
   const txt = String(d.variantText||"");
-  const rows=[]; const re=/([A-Za-z0-9]{1,4})\s*\/[^-\/]*-\s*(\d+)\s*pcs?/gi; let m;
-  while((m=re.exec(txt))!==null) rows.push({ size:m[1].toUpperCase(), qty:parseInt(m[2],10) });
-  return rows;   // пусто -> размерной таблицы нет, общий тираж показывает поле QTY
+  const rows=[]; let m;
+  const re=/\b(OSFA|ONE ?SIZE|OS|XXXL|XXL|4XL|3XL|2XL|XL|XS|S|M|L)\s*\/[^]*?-\s*(\d+)\s*pcs?\b/gi;
+  while((m=re.exec(txt))!==null) rows.push({ size:m[1].toUpperCase().replace(/\s+/g," "), qty:parseInt(m[2],10) });
+  return rows;
 }
 
 /* ================= рендер пруфа ================= */
@@ -371,7 +404,20 @@ function renderProof(d){
   const front=d.frontArtUrl?`<div class="art"><img src="${d.frontArtUrl}" alt="Artwork"></div>`:`<div class="art">${artPlaceholder()}</div>`;
   const vector=d.vectorArtUrl?`<div class="v-art"><img src="${d.vectorArtUrl}" alt="Vector artwork"></div>`
     :(d.frontArtUrl?`<div class="v-art"><img src="${d.frontArtUrl}" alt="Vector artwork"></div>`:`<div class="v-art">${artPlaceholder()}</div>`);
-  const printSwatch=d.printColor.rainbow?`<div class="swatch rainbow"></div>`:`<div class="swatch" style="background:${d.printColor.hex||'#000'}"></div>`;
+  const printSwatch=d.printColor?(d.printColor.rainbow?`<div class="swatch rainbow"></div>`:`<div class="swatch" style="background:${d.printColor.hex||'#000'}"></div>`):"";
+
+  /* --- цвета: новый формат (Design Colors) или старый (baseColorNames/printColor) --- */
+  const parsedColors = parseColors(d);
+  let baseColors, accentColors, legacyPrint=false;
+  if(parsedColors.length){
+    baseColors   = parsedColors.filter(c=>c.type==="base");
+    accentColors = parsedColors.filter(c=>c.type && c.type!=="base");
+    if(!baseColors.length && !accentColors.length) baseColors = parsedColors;  // тип не проставлен -> считаем базовыми
+  } else {
+    baseColors   = buildBaseColors(d);   // старый формат
+    accentColors = [];
+    legacyPrint  = true;
+  }
 
   /* --- мокап: реальное фото PRODUCT MOCKUP, при ошибке загрузки -> SVG-футболка --- */
   const mockupBlock = d.mockupUrl
@@ -386,12 +432,25 @@ function renderProof(d){
          <div class="mockup">${teeSVG()}${front}</div><div class="mockup">${teeSVG()}</div>
        </div>`;
 
-  /* --- базовый цвет: 1 кружок если один цвет, 2 кружка если два разных --- */
-  const baseColors  = buildBaseColors(d);
+  /* --- базовый цвет: кружок(и) с hex-заливкой + подпись имени --- */
   const baseSwatches= baseColors.length
-    ? baseColors.map(c=>`<div class="swatch" style="background:${c.hex}"></div>`).join("")
+    ? baseColors.map(c=>`<div class="swatch" style="background:${c.hex||'#CFC8B8'}"></div>`).join("")
     : `<div class="swatch"></div>`;
-  const baseNames   = baseColors.length ? baseColors.map(c=>esc(c.name)).join(" / ") : "—";
+  const baseNames   = baseColors.length ? baseColors.map(c=>esc(c.name||hexToName(c.hex))).join(" / ") : "—";
+
+  /* --- thread / imprint: отдельные кружки с подписью типа --- */
+  const accentTypes = [...new Set(accentColors.map(c=>c.type))];
+  const accentMixed = accentTypes.length>1;
+  const accentTitle = accentColors.length ? accentTypes.map(t=>t[0].toUpperCase()+t.slice(1)).join(" / ")
+                    : (legacyPrint ? "Print Color" : "Thread / Imprint");
+  const accentItems = accentColors.map(c=>`<div class="swatch-item">
+        <div class="swatch" style="background:${c.hex||'#000'}"></div>
+        <span class="sw-name">${esc(c.name||hexToName(c.hex))}</span>
+        ${accentMixed?`<span class="sw-type">${esc(c.type)}</span>`:""}
+      </div>`).join("");
+  const accentCell = accentColors.length ? `<div class="swatch-row">${accentItems}</div>`
+                   : (legacyPrint ? `${printSwatch}<div class="val">${esc(d.printColor&&d.printColor.name||"")}</div>`
+                                  : `<div class="swatch"></div><div class="val">—</div>`);
 
   const sizeRows = parseSizes(d).map(s=>`<span class="s">${esc(s.size)}</span><span>${s.qty}</span>`).join("");
 
@@ -426,8 +485,7 @@ function renderProof(d){
       <div class="spec center"><h4>Base Color</h4>
         <div class="swatch-row">${baseSwatches}</div>
         <div class="val">${baseNames}</div></div>
-      <div class="spec center"><h4>Print Color</h4>${printSwatch}
-        <div class="val">${esc(d.printColor.name)}</div></div>
+      <div class="spec center"><h4>${esc(accentTitle)}</h4>${accentCell}</div>
       <div class="spec"><h4>QTY : ${esc(d.qty)}</h4></div>
       <div class="spec"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>
       <div class="spec"><h4>Client Vector Artwork</h4>
