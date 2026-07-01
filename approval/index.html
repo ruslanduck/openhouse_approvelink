@@ -127,6 +127,10 @@
   .vector .v-art img{width:100%;display:block}
   .vector .v-meta{font-size:9.5px;color:var(--ink-soft);line-height:1.6;padding-left:16px;border-left:1px solid var(--line);margin-left:14px}
   .vector .v-meta b{display:block;letter-spacing:.12em;margin-bottom:4px;color:var(--ink)}
+  .v-sub{font-size:9px;color:var(--muted);letter-spacing:.04em;margin:-6px 0 12px}
+  .vector .v-meta .vm-row{margin-bottom:9px}
+  .vector .v-meta .vm-row:last-child{margin-bottom:0}
+  .vector .v-meta .vm-row span{display:block}
 
   .p-foot{display:flex;justify-content:space-between;gap:24px;border-top:1px solid var(--line);
     padding:14px 0 22px;align-items:flex-end}
@@ -264,6 +268,8 @@ const MOCK = {
   variantText:"S / White - 6 pcs\nM / White - 10 pcs\nL / White - 10 pcs\nXL / White - 4 pcs",
   placement:"Front",
   artworkSize:'W: 28 cm × H: 15.18 cm',
+  frontSize:'W: 28 cm × H: 15.18 cm',   // Front Mesurements
+  backSize:'W: 14 cm × H: 2.2 cm',      // Back Mesurements
   // ↓ Client Order Notes = Additional Notes (from Artwork Submission); переносы -> || (страница вернёт их в строки)
   clientOrderNotes:"Please match embroidery to brand navy.||Keep the wordmark centered on the front panel.",
   frontArtUrl:null,
@@ -468,6 +474,8 @@ function renderProof(d){
 
   /* обязательная заметка под QTY + заметки клиента (Additional Notes) */
   const qtyNote   = d.qtyNote || "Please note colors will be best match to Pantones";
+  const frontSize = String(d.frontSize || d.artworkSize || "").trim();
+  const backSize  = String(d.backSize || "").trim();
   const notesRaw  = String(d.clientOrderNotes||"").trim();
   const notesHtml = notesRaw ? esc(notesRaw).replace(/\s*\|\|\s*|\r?\n/g,"<br>") : "—";
 
@@ -510,8 +518,12 @@ function renderProof(d){
       </div>
       <div class="section s-vector">
         <div class="spec"><h4>Client Vector Artwork</h4>
+          <div class="v-sub">Artwork placed on product at 100% scale</div>
           <div class="vector">${vector}
-            <div class="v-meta"><b>${esc(d.placement).toUpperCase()}</b>${esc(d.artworkSize).replace(/\n/g,"<br>")}</div>
+            <div class="v-meta">
+              <div class="vm-row"><b>FRONT</b><span>${esc(frontSize)||"—"}</span></div>
+              ${backSize?`<div class="vm-row"><b>BACK</b><span>${esc(backSize)}</span></div>`:""}
+            </div>
           </div></div>
       </div>
       <div class="section s-notes">
