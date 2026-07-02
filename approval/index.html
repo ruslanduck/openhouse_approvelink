@@ -115,7 +115,10 @@
   .p-mockup-label{text-align:center;margin:26px 0 2px;font-size:12px;letter-spacing:.16em;color:var(--ink-soft)}
   .p-mockup-label small{display:block;color:var(--muted);letter-spacing:.2em;margin-top:3px;font-size:10px}
 
-  /* реальное фото-мокап из Airtable — маленькие фотки растягиваем до нормального размера */
+  /* реальное фото-мокап из Airtable — одно крупное, несколько в ряд */
+  .mockup-photos{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:12px auto 0}
+  .mockup-photos .mockup-photo{flex:1 1 340px;max-width:640px;margin:0}
+  .mockup-photos.single .mockup-photo{flex:0 1 1040px;max-width:1040px}
   .mockup-photo{width:100%;max-width:1040px;margin:12px auto 0}
   .mockup-photo>img{width:100%;height:auto;max-height:760px;object-fit:contain;display:block}
   .mock-fallback{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
@@ -159,6 +162,10 @@
   .vector .v-art{width:clamp(110px,14vw,160px);max-width:100%}
   .vector .v-art img{width:100%;height:auto;display:block;border:1px solid var(--line)}
   .vector .v-art svg{width:100%;height:auto;display:block}
+  /* заглушка, если картинка не загрузилась (битая/просроченная ссылка) */
+  .img-missing{display:flex;align-items:center;justify-content:center;text-align:center;
+    min-height:90px;padding:14px;border:1px dashed var(--line);border-radius:6px;
+    font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f3}
   .vector .v-meta{font-size:11.5px;color:var(--ink-soft);line-height:1.65;padding-left:16px;
     border-left:1px solid var(--line);margin-left:16px;flex:0 0 auto}
   .vector .v-meta b{display:block;letter-spacing:.12em;margin-bottom:4px;color:var(--ink);font-size:11px}
@@ -509,12 +516,12 @@ function swatchRow(colors){
 }
 
 /* ================= рендер одной карточки пруфа ================= */
-function renderProofCard(d, mockupUrl){
+function renderProofCard(d){
   const front=d.frontArtUrl?`<div class="art"><img src="${esc(d.frontArtUrl)}" alt="Artwork"></div>`:`<div class="art">${artPlaceholder()}</div>`;
 
   const vectorImgs = collectVectorImages(d);
   const vector = vectorImgs.length
-    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(u)}" alt="Vector artwork" loading="lazy"></div>`).join("")
+    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(u)}" alt="Vector artwork" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="img-missing" style="display:none">Image link expired<br>or unavailable</div></div>`).join("")
     : `<div class="v-art">${artPlaceholder()}</div>`;
 
   /* --- цвета: новый формат (Design Colors) или старый --- */
@@ -542,14 +549,15 @@ function renderProofCard(d, mockupUrl){
   /* число колонок для сетки цветов: по большему из BASE/IMPRINT, чтобы столбики совпадали */
   const swatchCols = Math.min(6, Math.max(baseColors.length, accentColors.length, 1));
 
-  /* --- мокап: реальное фото; при ошибке -> SVG-футболка --- */
-  const mockupBlock = mockupUrl
-    ? `<div class="mockup-photo">
-         <img src="${esc(mockupUrl)}" alt="Product mockup"
-              onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-         <div class="mock-fallback" style="display:none">
-           <div class="mockup">${teeSVG()}${front}</div><div class="mockup">${teeSVG()}</div>
-         </div>
+  /* --- мокап: одно или несколько реальных фото (mockupUrl через ;;); битые прячем; если пусто -> SVG-футболка --- */
+  const mockups = parseImageUrls(d.mockupUrl);
+  const mockupBlock = mockups.length
+    ? `<div class="mockup-photos${mockups.length===1?" single":""}">
+         ${mockups.map(u=>`<div class="mockup-photo">
+           <img src="${esc(u)}" alt="Product mockup" loading="lazy"
+                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <div class="img-missing" style="display:none;min-height:200px">Mockup image link expired or unavailable</div>
+         </div>`).join("")}
        </div>`
     : `<div class="mock-fallback">
          <div class="mockup">${teeSVG()}${front}</div><div class="mockup">${teeSVG()}</div>
@@ -638,9 +646,7 @@ function renderProofCard(d, mockupUrl){
 
 /* несколько mockupUrl (через ;;) -> полная копия карточки на каждую фотку */
 function renderProof(d){
-  const mockups = parseImageUrls(d.mockupUrl);
-  const list = mockups.length ? mockups : [null];
-  return `<div class="proof-wrap">${list.map(u=>renderProofCard(d,u)).join("")}</div>`;
+  return `<div class="proof-wrap">${renderProofCard(d)}</div>`;
 }
 
 /* ================= кнопки в хедере / статус ================= */
