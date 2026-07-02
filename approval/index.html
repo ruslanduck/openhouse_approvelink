@@ -37,8 +37,8 @@
     --btn-ink:#15140F;
     --ok:#3C6E47;
     --radius:9px;
-    --maxw:1200px;
-    --header-h:64px;
+    --maxw:1320px;
+    --header-h:74px;
   }
 
   *{box-sizing:border-box}
@@ -59,11 +59,12 @@
     background:rgba(243,239,231,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border-bottom:1.5px solid var(--line-ink);
   }
-  .sh-inner{max-width:var(--maxw);margin:0 auto;height:100%;padding:0 20px;
-    display:flex;align-items:center;justify-content:space-between;gap:14px}
-  .sh-mark{font-family:var(--font-display);font-size:clamp(19px,3.4vw,26px);letter-spacing:-.015em;
-    color:var(--ink);text-decoration:none;line-height:1;white-space:nowrap}
-  .sh-actions{display:flex;gap:10px;align-items:center;flex-wrap:nowrap}
+  .sh-inner{max-width:var(--maxw);margin:0 auto;height:100%;padding:0 26px;
+    display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px}
+  .sh-mark{font-family:var(--font-display);font-size:clamp(22px,4vw,34px);letter-spacing:-.02em;
+    color:var(--ink);text-decoration:none;line-height:1;white-space:nowrap;justify-self:start}
+  .sh-actions{display:flex;gap:12px;align-items:center;flex-wrap:nowrap;justify-self:center}
+  .sh-right{justify-self:end}
   .sh-status{font-size:12.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
   .sh-status.approved{color:var(--ok)}
   .sh-status.changes{color:var(--muted)}
@@ -77,14 +78,10 @@
   .btn-primary:hover{background:#000}
   .btn:focus-visible{outline:3px solid #9ab;outline-offset:2px}
 
-  /* ================= HERO ================= */
-  .hero{max-width:var(--maxw);margin:0 auto;text-align:center;padding:clamp(28px,6vw,64px) 20px 0}
-  .hero .wordmark{
-    font-family:var(--font-display);font-weight:400;letter-spacing:-.015em;line-height:.9;
-    color:var(--ink);margin:0;font-size:clamp(44px,9vw,110px);
-  }
+  /* ================= ВВОДНАЯ СТРОКА (без дублирующего лого) ================= */
+  .intro{max-width:var(--maxw);margin:0 auto;text-align:center;padding:clamp(30px,5vw,56px) 20px 0}
   .subtitle{font-family:var(--font-serif);font-style:italic;color:var(--ink-soft);
-    font-size:clamp(18px,2.6vw,24px);margin:18px 0 0}
+    font-size:clamp(20px,3vw,30px);margin:0}
   .reply-note{font-weight:600;font-size:14.5px;color:var(--muted);margin:12px auto 0;max-width:680px}
 
   .resolved{max-width:680px;margin:26px auto 0;padding:16px 20px;border-radius:var(--radius);
@@ -149,7 +146,7 @@
   .swatch-item{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:52px}
   .swatch{width:clamp(36px,5vw,44px);height:clamp(36px,5vw,44px);border-radius:50%;border:1px solid var(--line)}
   .swatch.rainbow{border:0;background:linear-gradient(180deg,#e23b2e 0 16%,#ef8a23 16% 33%,#f2c43b 33% 50%,#3f9a52 50% 66%,#2f6fb0 66% 83%,#7a4ea3 83% 100%)}
-  .sw-name{font-family:var(--font-serif);font-style:italic;font-size:14px;color:var(--ink);line-height:1.2;text-align:center}
+  .sw-name{font-family:var(--font-body);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);line-height:1.25;text-align:center}
 
   .sizes{display:grid;grid-template-columns:auto 1fr;gap:5px 24px;font-size:15px;font-variant-numeric:tabular-nums}
   .sizes .s{color:var(--ink-soft);font-weight:600}
@@ -182,10 +179,18 @@
   .spinner{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--ink);border-radius:50%;
     margin:0 auto 16px;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* появление блоков при скролле (лёгкое, на IntersectionObserver) */
+  .reveal{opacity:0;transform:translateY(20px);transition:opacity .55s ease,transform .55s ease;will-change:opacity,transform}
+  .reveal.in{opacity:1;transform:none}
+  .p-specs>.section.reveal:nth-child(2){transition-delay:.09s}
+  .p-specs>.section.reveal:nth-child(3){transition-delay:.18s}
+
   @media(prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
     .spinner{animation-duration:1.6s}
     .btn:hover{transform:none}
+    .reveal{opacity:1 !important;transform:none !important;transition:none}
   }
 
   /* ================= МОДАЛКИ ================= */
@@ -209,8 +214,11 @@
   /* ================= МОБИЛКА ================= */
   @media(max-width:760px){
     :root{--header-h:58px}
-    .btn{padding:9px 14px;font-size:13.5px}
-    .sh-inner{padding:0 14px}
+    .btn{padding:8px 12px;font-size:12.5px}
+    .sh-inner{padding:0 12px;grid-template-columns:auto 1fr;gap:8px}
+    .sh-mark{font-size:clamp(17px,5vw,24px)}
+    .sh-actions{justify-self:end;gap:8px}
+    .sh-right{display:none}
     .proof-wrap{padding:0 12px}
     .p-specs,.p-specs.no-notes{grid-template-columns:1fr}
     .section+.section{border-left:0;border-top:1px solid var(--line)}
@@ -229,17 +237,17 @@
 </head>
 <body>
 
-<!-- ===== ФИКСИРОВАННЫЙ ХЕДЕР: марка + кнопки решения ===== -->
+<!-- ===== ФИКСИРОВАННЫЙ ХЕДЕР: марка слева, кнопки по центру ===== -->
 <header class="site-header">
   <div class="sh-inner">
     <a class="sh-mark" href="#top">OPENHOUSE</a>
     <div class="sh-actions" id="decision"></div>
+    <div class="sh-right" id="headerStatus"></div>
   </div>
 </header>
 
-<!-- ===== HERO ===== -->
-<div class="hero" id="top">
-  <h1 class="wordmark">OPENHOUSE</h1>
+<!-- ===== ВВОДНАЯ СТРОКА ===== -->
+<div class="intro" id="top">
   <p class="subtitle">Please approve the design</p>
   <p class="reply-note">Do not reply to the email. Approvals or comments must be submitted through the link.</p>
   <div id="statusBanner"></div>
@@ -554,18 +562,18 @@ function renderProofCard(d, mockupUrl){
 
   /* пустые заметки -> секции нет совсем, сетка перестраивается (класс no-notes) */
   const notesSection = notesRaw
-    ? `<div class="section s-notes"><div class="spec"><h4>Client Order Notes</h4>
+    ? `<div class="section s-notes reveal"><div class="spec"><h4>Client Order Notes</h4>
          <div class="notes">${notesHtml}</div></div></div>`
     : "";
 
   return `
   <div class="proof">
-    <div class="p-head">
+    <div class="p-head reveal">
       <div><span class="p-kind">${esc(d.proofKind)}</span><span class="p-product">${esc(d.productName)}</span></div>
       <div class="p-order">ORDER NO.<b>${esc(d.orderNo)}</b></div>
     </div>
 
-    <div class="p-meta">
+    <div class="p-meta reveal">
       <div class="left">
         PREPARED FOR: ${esc(d.preparedFor)}<span class="sep">/</span>
         DATE: ${fmtDate(d.date)}<span class="sep">/</span>
@@ -575,19 +583,21 @@ function renderProofCard(d, mockupUrl){
       <div class="right">${keyIcon}PRODUCT ${esc(d.productCode)}</div>
     </div>
 
-    <div class="p-mockup-label">PRODUCT MOCKUP<small>${esc(d.scale)}</small></div>
-    ${mockupBlock}
-    <div class="measure">${esc(formatMeasure(d.measureLine))}</div>
+    <div class="reveal mockup-group">
+      <div class="p-mockup-label">PRODUCT MOCKUP<small>${esc(d.scale)}</small></div>
+      ${mockupBlock}
+      <div class="measure">${esc(formatMeasure(d.measureLine))}</div>
+    </div>
 
     <div class="p-specs${notesRaw?"":" no-notes"}">
-      <div class="section s-colors">
+      <div class="section s-colors reveal">
         <div class="spec center"><h4>Base</h4>${swatchRow(baseColors.length?baseColors:[{name:"—",hex:""}])}</div>
         ${accentColors.length?`<div class="spec center"><h4>${esc(accentTitle)}</h4>${swatchRow(accentColors)}</div>`:""}
         <div class="spec"><h4>QTY : ${esc(d.qty)}</h4>
           <div class="qty-note">${esc(qtyNote)}</div></div>
         ${showSizes?`<div class="spec s-sizes"><h4>Size Breakdown</h4><div class="sizes">${sizeRows}</div></div>`:""}
       </div>
-      <div class="section s-vector">
+      <div class="section s-vector reveal">
         <div class="spec"><h4>Client Vector Artwork</h4>
           <div class="v-sub">Artwork placed on product at 100% scale</div>
           <div class="vector">
@@ -657,11 +667,24 @@ document.getElementById("confirmChanges").onclick=async()=>{
 /* ================= утилиты + загрузка ================= */
 function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function getId(){return new URLSearchParams(location.search).get("id");}
+
+/* плавное появление блоков при скролле — дёшево, через IntersectionObserver */
+function armReveal(){
+  const els=document.querySelectorAll(".reveal");
+  if(!els.length) return;
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(reduce || !("IntersectionObserver" in window)){ els.forEach(e=>e.classList.add("in")); return; }
+  const io=new IntersectionObserver((entries,obs)=>{
+    entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add("in"); obs.unobserve(en.target); } });
+  },{rootMargin:"0px 0px -8% 0px",threshold:.08});
+  els.forEach(e=>io.observe(e));
+}
+
 (async function init(){
   const id=getId();const content=document.getElementById("content");
   if(!id&&!USE_MOCK){document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>Link is missing its proof</h2>Please open the link from your email, or contact your account manager.</div>`;return;}
-  try{CURRENT=await API.getProof(id);content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);}
+  try{CURRENT=await API.getProof(id);content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();}
   catch(e){console.error("proof load failed:",e);document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>We couldn’t find this proof</h2>It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;}
 })();
