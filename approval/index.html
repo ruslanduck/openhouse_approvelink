@@ -60,11 +60,11 @@
     border-bottom:1.5px solid var(--line-ink);
   }
   .sh-inner{max-width:var(--maxw);margin:0 auto;height:100%;padding:0 26px;
-    display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:14px}
+    display:flex;align-items:center;gap:14px}
   .sh-mark{font-family:var(--font-display);font-size:clamp(22px,4vw,34px);letter-spacing:-.02em;
-    color:var(--ink);text-decoration:none;line-height:1;white-space:nowrap;justify-self:start}
-  .sh-actions{display:flex;gap:12px;align-items:center;flex-wrap:nowrap;justify-self:center}
-  .sh-right{justify-self:end}
+    color:var(--ink);text-decoration:none;line-height:1;white-space:nowrap;margin-right:auto}
+  .sh-actions{display:flex;gap:12px;align-items:center;flex-wrap:nowrap}
+  .sh-right{}
   .sh-status{font-size:12.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
   .sh-status.approved{color:var(--ok)}
   .sh-status.changes{color:var(--muted)}
@@ -79,10 +79,11 @@
   .btn:focus-visible{outline:3px solid #9ab;outline-offset:2px}
 
   /* ================= ВВОДНАЯ СТРОКА (без дублирующего лого) ================= */
-  .intro{max-width:var(--maxw);margin:0 auto;text-align:center;padding:clamp(30px,5vw,56px) 20px 0}
+  .intro{max-width:var(--maxw);margin:0 auto;text-align:right;padding:8px 20px 0}
   .subtitle{font-family:var(--font-serif);font-style:italic;color:var(--ink-soft);
     font-size:clamp(20px,3vw,30px);margin:0}
-  .reply-note{font-weight:600;font-size:14.5px;color:var(--muted);margin:12px auto 0;max-width:680px}
+  .reply-note{font-family:var(--font-serif);font-style:italic;font-weight:400;font-size:13.5px;
+    color:var(--muted);margin:0 0 0 auto;max-width:720px}
 
   .resolved{max-width:680px;margin:26px auto 0;padding:16px 20px;border-radius:var(--radius);
     border:1.5px solid var(--line-ink);background:#fff;text-align:center;font-weight:600;font-size:15px}
@@ -115,10 +116,10 @@
   .p-mockup-label small{display:block;color:var(--muted);letter-spacing:.2em;margin-top:3px;font-size:10px}
 
   /* реальное фото-мокап из Airtable — маленькие фотки растягиваем до нормального размера */
-  .mockup-photo{width:100%;max-width:840px;margin:10px auto 0}
-  .mockup-photo>img{width:100%;height:auto;max-height:600px;object-fit:contain;display:block}
-  .mock-fallback{display:flex;gap:18px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
-  .mock-fallback .mockup{position:relative;width:min(320px,86vw)}
+  .mockup-photo{width:100%;max-width:1040px;margin:12px auto 0}
+  .mockup-photo>img{width:100%;height:auto;max-height:760px;object-fit:contain;display:block}
+  .mock-fallback{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+  .mock-fallback .mockup{position:relative;width:min(400px,90vw)}
   .mockup svg{width:100%;height:auto;display:block}
   .mockup .art{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);width:40%}
   .mockup .art img{width:100%;display:block}
@@ -127,13 +128,14 @@
 
   /* ================= НИЖНЯЯ СЕТКА ================= */
   /* колонки-разделы: [цвета: BASE + IMPRINT] | [QTY + размеры] | [vector] | [notes?] */
-  .p-specs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.7fr) minmax(0,1.1fr);
+  .p-specs{display:grid;grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(250px,1.7fr) minmax(150px,1.05fr);
     border-top:1.5px solid var(--line-ink);margin-top:16px}
-  .p-specs.no-notes{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.9fr)}
+  .p-specs.no-notes{grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(250px,1.9fr)}
   .section{min-width:0}
   .section+.section{border-left:1px solid var(--line)}   /* только вертикальные разделители колонок — всегда ровные, на всю высоту */
   .spec{padding:18px 18px 24px}
-  .section>.spec+.spec{padding-top:4px}                  /* стопка в колонке (base/imprint, qty/size) — отступом, без линии */
+  .section>.spec+.spec{padding-top:16px}                              /* спокойный отступ в стопке (QTY/Size) */
+  .section.s-colors>.spec+.spec{margin-top:2px;border-top:1px solid var(--line)}  /* разделитель только у цветов: BASE | IMPRINT */
   .spec h4{margin:0 0 14px;font-size:clamp(10.5px,1.5vw,12px);letter-spacing:.14em;color:var(--ink-soft);font-weight:700;text-transform:uppercase}
   .spec.center{text-align:center}
   .qty-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:12px;max-width:200px}
@@ -143,12 +145,12 @@
   .size-row .sz b{color:var(--ink);font-weight:700;margin-right:5px}
   .notes{font-size:13px;line-height:1.7;color:var(--ink-soft)}
 
-  /* --- цвета: горизонтальные ряды кружков, имя под каждым --- */
-  .swatch-row{display:flex;gap:18px 22px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
-  .swatch-item{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:52px}
-  .swatch{width:clamp(36px,5vw,44px);height:clamp(36px,5vw,44px);border-radius:50%;border:1px solid var(--line)}
+  /* --- цвета: ровная сетка по колонкам (BASE и IMPRINT выравниваются столбик в столбик) --- */
+  .swatch-row{display:grid;grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));gap:16px 12px;align-items:start}
+  .swatch-item{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
+  .swatch{width:clamp(34px,4.6vw,44px);height:clamp(34px,4.6vw,44px);border-radius:50%;border:1px solid var(--line)}
   .swatch.rainbow{border:0;background:linear-gradient(180deg,#e23b2e 0 16%,#ef8a23 16% 33%,#f2c43b 33% 50%,#3f9a52 50% 66%,#2f6fb0 66% 83%,#7a4ea3 83% 100%)}
-  .sw-name{font-family:var(--font-body);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);line-height:1.25;text-align:center}
+  .sw-name{font-family:var(--font-body);font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);line-height:1.2;text-align:center;word-break:break-word}
 
   /* --- vector artwork: несколько превью с переносом --- */
   .v-sub{font-size:10.5px;color:var(--muted);letter-spacing:.04em;margin:-8px 0 14px}
@@ -211,6 +213,17 @@
   textarea:focus{outline:none;border-color:var(--ink)}
   .err{color:var(--warn);font-size:13px;margin:6px 0 0;display:none}
 
+  /* ================= ПЛАНШЕТ: колонки спецификаций в один столбец, чтобы не переполнялось ================= */
+  @media(max-width:900px){
+    .p-specs,.p-specs.no-notes{grid-template-columns:1fr}
+    .p-specs .section+.section{border-left:0;border-top:1px solid var(--line)}
+    .p-specs .spec.center{text-align:left}
+    .swatch-row{justify-content:start}
+    .vector{flex-direction:column}
+    .vector .v-meta{border-left:0;border-top:1px solid var(--line);margin:14px 0 0;padding:12px 0 0;display:flex;gap:28px}
+    .vector .v-meta .vm-row{margin-bottom:0}
+  }
+
   /* ================= МОБИЛКА ================= */
   @media(max-width:760px){
     :root{--header-h:58px}
@@ -246,8 +259,7 @@
 
 <!-- ===== ВВОДНАЯ СТРОКА ===== -->
 <div class="intro" id="top">
-  <p class="subtitle">Please approve the design</p>
-  <p class="reply-note">Do not reply to the email. Approvals or comments must be submitted through the link.</p>
+  <p class="reply-note">* Do not reply to the email. Approvals or comments must be submitted through the link.</p>
   <div id="statusBanner"></div>
 </div>
 
@@ -527,6 +539,9 @@ function renderProofCard(d, mockupUrl){
     accentTitle=tops.map(t=>t.replace(/\b\w/g,ch=>ch.toUpperCase())).join(" / ");
   }
 
+  /* число колонок для сетки цветов: по большему из BASE/IMPRINT, чтобы столбики совпадали */
+  const swatchCols = Math.min(6, Math.max(baseColors.length, accentColors.length, 1));
+
   /* --- мокап: реальное фото; при ошибке -> SVG-футболка --- */
   const mockupBlock = mockupUrl
     ? `<div class="mockup-photo">
@@ -596,7 +611,7 @@ function renderProofCard(d, mockupUrl){
     </div>
 
     <div class="p-specs${notesRaw?"":" no-notes"}">
-      <div class="section s-colors reveal">
+      <div class="section s-colors reveal" style="--cols:${swatchCols}">
         <div class="spec center"><h4>Base</h4>${swatchRow(baseColors.length?baseColors:[{name:"—",hex:""}])}</div>
         ${accentColors.length?`<div class="spec center"><h4>${esc(accentTitle)}</h4>${swatchRow(accentColors)}</div>`:""}
       </div>
