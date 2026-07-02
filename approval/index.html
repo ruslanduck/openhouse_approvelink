@@ -646,16 +646,10 @@ function renderProofCard(d){
 
 /* несколько mockupUrl (через ;;) -> полная копия карточки на каждую фотку */
 function renderProof(d){
-  // Получаем массив всех ссылок на мокапы
   const mockups = parseImageUrls(d.mockupUrl);
-  
-  // Если ссылок нет, возвращаем стандартную карточку (сработает SVG-заглушка)
   if (!mockups || mockups.length === 0) {
     return `<div class="proof-wrap">${renderProofCard(d)}</div>`;
   }
-  
-  // Перебираем ссылки и для каждой рендерим свою полную карточку.
-  // Оператор {...d, mockupUrl: url} создает копию всех данных заказа, но с 1 конкретной фоткой
   return `<div class="proof-wrap">
     ${mockups.map(url => renderProofCard({ ...d, mockupUrl: url })).join("")}
   </div>`;
