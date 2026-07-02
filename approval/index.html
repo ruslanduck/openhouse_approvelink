@@ -131,14 +131,16 @@
     border-top:1.5px solid var(--line-ink);margin-top:16px}
   .p-specs.no-notes{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.9fr)}
   .section{min-width:0}
-  .section+.section{border-left:1px solid var(--line)}
-  .section>.spec+.spec{border-top:1px solid var(--line)}   /* стопка внутри колонки: base/imprint, qty/size */
+  .section+.section{border-left:1px solid var(--line)}   /* только вертикальные разделители колонок — всегда ровные, на всю высоту */
   .spec{padding:18px 18px 24px}
+  .section>.spec+.spec{padding-top:4px}                  /* стопка в колонке (base/imprint, qty/size) — отступом, без линии */
   .spec h4{margin:0 0 14px;font-size:clamp(10.5px,1.5vw,12px);letter-spacing:.14em;color:var(--ink-soft);font-weight:700;text-transform:uppercase}
   .spec.center{text-align:center}
   .qty-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:12px;max-width:200px}
   .size-note{font-size:11px;line-height:1.55;color:var(--muted);margin:0 0 12px;max-width:230px}
-  .size-pct{font-size:13px;font-weight:600;color:var(--ink-soft);letter-spacing:.02em;line-height:1.8}
+  .size-row{display:flex;flex-wrap:wrap;gap:9px 20px;font-size:14.5px;font-variant-numeric:tabular-nums;line-height:1.6}
+  .size-row .sz{color:var(--ink-soft);white-space:nowrap}
+  .size-row .sz b{color:var(--ink);font-weight:700;margin-right:5px}
   .notes{font-size:13px;line-height:1.7;color:var(--ink-soft)}
 
   /* --- цвета: горизонтальные ряды кружков, имя под каждым --- */
@@ -147,9 +149,6 @@
   .swatch{width:clamp(36px,5vw,44px);height:clamp(36px,5vw,44px);border-radius:50%;border:1px solid var(--line)}
   .swatch.rainbow{border:0;background:linear-gradient(180deg,#e23b2e 0 16%,#ef8a23 16% 33%,#f2c43b 33% 50%,#3f9a52 50% 66%,#2f6fb0 66% 83%,#7a4ea3 83% 100%)}
   .sw-name{font-family:var(--font-body);font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);line-height:1.25;text-align:center}
-
-  .sizes{display:grid;grid-template-columns:auto 1fr;gap:5px 24px;font-size:15px;font-variant-numeric:tabular-nums}
-  .sizes .s{color:var(--ink-soft);font-weight:600}
 
   /* --- vector artwork: несколько превью с переносом --- */
   .v-sub{font-size:10.5px;color:var(--muted);letter-spacing:.04em;margin:-8px 0 14px}
@@ -548,10 +547,11 @@ function renderProofCard(d, mockupUrl){
   const realSizes = allSizes.filter(s=>!/^(OS|OSFA|ONE ?SIZE)$/i.test(String(s.size)));
   let sizeInner;
   if(realSizes.length){
-    sizeInner = `<div class="sizes">${realSizes.map(s=>`<span class="s">${esc(s.size)}</span><span>${s.qty}</span>`).join("")}</div>`;
+    const items = realSizes.map(s=>`<span class="sz"><b>${esc(s.size)}</b> ${s.qty}</span>`).join("");
+    sizeInner = `<div class="size-row">${items}</div>`;
   } else {
-    const pct = STANDARD_SIZES.map(([s,p])=>`${s} ${p}%`).join("  /  ");
-    sizeInner = `<div class="size-note">${STANDARD_NOTE}</div><div class="size-pct">${pct}</div>`;
+    const items = STANDARD_SIZES.map(([s,p])=>`<span class="sz"><b>${s}</b> ${p}%</span>`).join("");
+    sizeInner = `<div class="size-note">${STANDARD_NOTE}</div><div class="size-row">${items}</div>`;
   }
 
   const qtyNote   = d.qtyNote || "Please note colors will be best match to Pantones";
