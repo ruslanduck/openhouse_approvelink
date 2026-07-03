@@ -123,11 +123,11 @@
   .p-mockup-label small{display:block;color:var(--muted);letter-spacing:.2em;margin-top:3px;font-size:10px}
 
   /* реальное фото-мокап из Airtable — одно крупное, несколько в ряд */
-  .mockup-photos{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:16px auto 0}
-  .mockup-photos .mockup-photo{flex:1 1 420px;max-width:100%;margin:0}
-  .mockup-photos.single .mockup-photo{flex:1 1 100%;max-width:100%}
-  .mockup-photo{width:100%;max-width:100%;margin:16px auto 0}
-  .mockup-photo>img{width:100%;height:auto;max-height:900px;object-fit:contain;display:block}
+  .mockup-photos{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap;margin:12px auto 0}
+  .mockup-photos .mockup-photo{flex:1 1 340px;max-width:640px;margin:0}
+  .mockup-photos.single .mockup-photo{flex:0 1 1040px;max-width:1040px}
+  .mockup-photo{width:100%;max-width:1040px;margin:12px auto 0}
+  .mockup-photo>img{width:100%;height:auto;max-height:760px;object-fit:contain;display:block}
   .mock-fallback{display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
   .mock-fallback .mockup{position:relative;width:min(400px,90vw)}
   .mockup svg{width:100%;height:auto;display:block}
@@ -155,9 +155,9 @@
   .size-row .sz b{color:var(--ink);font-weight:700;margin-right:5px}
   .notes{font-size:13px;line-height:1.7;color:var(--ink-soft)}
 
-  /* --- цвета: ровная сетка по колонкам (BASE и IMPRINT выравниваются столбик в столбик) --- */
-  .swatch-row{display:grid;grid-template-columns:repeat(var(--cols,3),minmax(0,1fr));gap:16px 12px;align-items:start}
-  .swatch-item{display:flex;flex-direction:column;align-items:center;gap:7px;min-width:0}
+  /* --- цвета: центрированный ряд с переносом; любой ряд (полный и остаточный) идёт по центру колонки --- */
+  .swatch-row{display:flex;flex-wrap:wrap;justify-content:center;gap:16px 16px;align-items:flex-start}
+  .swatch-item{display:flex;flex-direction:column;align-items:center;gap:7px;width:clamp(52px,6vw,62px)}
   .swatch{width:clamp(34px,4.6vw,44px);height:clamp(34px,4.6vw,44px);border-radius:50%;border:1px solid var(--line)}
   .swatch.rainbow{border:0;background:linear-gradient(180deg,#e23b2e 0 16%,#ef8a23 16% 33%,#f2c43b 33% 50%,#3f9a52 50% 66%,#2f6fb0 66% 83%,#7a4ea3 83% 100%)}
   .sw-name{font-family:var(--font-body);font-size:11px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);line-height:1.2;text-align:center;word-break:break-word}
@@ -232,7 +232,6 @@
     .p-specs,.p-specs.no-notes{grid-template-columns:1fr}
     .p-specs .section+.section{border-left:0;border-top:1px solid var(--line)}
     .p-specs .spec.center{text-align:left}
-    .swatch-row{justify-content:start}
     .vector{flex-direction:column}
     .vector .v-meta{border-left:0;border-top:1px solid var(--line);margin:14px 0 0;padding:12px 0 0;display:flex;gap:28px}
     .vector .v-meta .vm-row{margin-bottom:0}
@@ -250,7 +249,6 @@
     .p-specs,.p-specs.no-notes{grid-template-columns:1fr}
     .section+.section{border-left:0;border-top:1px solid var(--line)}
     .spec.center{text-align:left}
-    .swatch-row{justify-content:flex-start}
     .vector{flex-direction:column}
     .vector .v-meta{border-left:0;border-top:1px solid var(--line);margin:14px 0 0;padding:12px 0 0;
       display:flex;gap:28px}
@@ -554,8 +552,6 @@ function renderProofCard(d){
   }
 
   /* число колонок для сетки цветов: по большему из BASE/IMPRINT, чтобы столбики совпадали */
-  const swatchCols = Math.min(6, Math.max(baseColors.length, accentColors.length, 1));
-
   /* --- мокап: одно или несколько реальных фото (mockupUrl через ;;); битые прячем; если пусто -> SVG-футболка --- */
   const mockups = parseImageUrls(d.mockupUrl);
   const mockupBlock = mockups.length
@@ -626,7 +622,7 @@ function renderProofCard(d){
     </div>
 
     <div class="p-specs${notesRaw?"":" no-notes"}">
-      <div class="section s-colors reveal" style="--cols:${swatchCols}">
+      <div class="section s-colors reveal">
         <div class="spec center"><h4>Base</h4>${swatchRow(baseColors.length?baseColors:[{name:"—",hex:""}])}</div>
         ${accentColors.length?`<div class="spec center"><h4>${esc(accentTitle)}</h4>${swatchRow(accentColors)}</div>`:""}
       </div>
