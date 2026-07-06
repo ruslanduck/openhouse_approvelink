@@ -579,18 +579,27 @@ function renderProofCard(d){
          <div class="mockup">${teeSVG()}${front}</div><div class="mockup">${teeSVG()}</div>
        </div>`;
 
+  /* есть ли у товара размеры вообще (чекбокс в Airtable -> hasSizes в вебхуке).
+     hasSizes=false -> кружки/сумки/кепки: размерную сетку не показываем совсем, остаётся только QTY.
+     не задано -> по умолчанию считаем, что размеры есть (обратная совместимость). */
+  const hasSizes = !(d.hasSizes===false || d.hasSizes===0 || d.hasSizes==="0" || d.hasSizes==="false" || d.hasSizes==="no");
+
   /* размеры: реальные (S/M/L/XL...) из вебхука, иначе стандартный процентный распределитель */
   const STANDARD_SIZES = [["S",12],["M",25],["L",30],["XL",25],["XXL",8]];
   const STANDARD_NOTE = "Standardized size quantities are broken down by percentage based on your total order amount unless otherwise specified.";
   const allSizes  = parseSizes(d);
   const realSizes = allSizes.filter(s=>!/^(OS|OSFA|ONE ?SIZE)$/i.test(String(s.size)));
-  let sizeInner;
-  if(realSizes.length){
-    const items = realSizes.map(s=>`<span class="sz"><b>${esc(s.size)}</b> ${s.qty}</span>`).join("");
-    sizeInner = `<div class="size-row">${items}</div>`;
-  } else {
-    const items = STANDARD_SIZES.map(([s,p])=>`<span class="sz"><b>${s}</b> ${p}%</span>`).join("");
-    sizeInner = `<div class="size-note">${STANDARD_NOTE}</div><div class="size-row">${items}</div>`;
+  let sizeBlock = "";
+  if(hasSizes){
+    let sizeInner;
+    if(realSizes.length){
+      const items = realSizes.map(s=>`<span class="sz"><b>${esc(s.size)}</b> ${s.qty}</span>`).join("");
+      sizeInner = `<div class="size-row">${items}</div>`;
+    } else {
+      const items = STANDARD_SIZES.map(([s,p])=>`<span class="sz"><b>${s}</b> ${p}%</span>`).join("");
+      sizeInner = `<div class="size-note">${STANDARD_NOTE}</div><div class="size-row">${items}</div>`;
+    }
+    sizeBlock = `<div class="spec"><h4>Size Breakdown</h4>${sizeInner}</div>`;
   }
 
   const qtyNote   = d.qtyNote || "Please note colors will be best match to Pantones";
@@ -642,7 +651,7 @@ function renderProofCard(d){
       <div class="section s-qty reveal">
         <div class="spec"><h4>QTY : ${esc(d.qty)}</h4>
           <div class="qty-note">${esc(qtyNote)}</div></div>
-        <div class="spec"><h4>Size Breakdown</h4>${sizeInner}</div>
+        ${sizeBlock}
       </div>
       <div class="section s-vector reveal">
         <div class="spec"><h4>Client Vector Artwork</h4>
