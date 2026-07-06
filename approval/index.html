@@ -221,6 +221,17 @@
   .modal p{color:var(--ink-soft);font-size:14.5px;margin:0 0 18px}
   .modal .warn{color:var(--warn);font-weight:600}
   .modal-actions{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;margin-top:20px}
+  .modal-actions.center{justify-content:center}
+  /* --- модалка-результат: центрированное подтверждение решения --- */
+  .modal.result{text-align:center;max-width:440px;padding:34px 30px 26px}
+  .modal.result h3{font-size:23px;margin:0 0 10px}
+  .modal.result p{font-size:15px;line-height:1.6;margin:0 auto;max-width:340px}
+  .result-icon{width:60px;height:60px;border-radius:50%;margin:0 auto 18px;display:flex;align-items:center;justify-content:center}
+  .result-icon svg{width:30px;height:30px}
+  .result-icon.approved{background:rgba(60,110,71,.12)}
+  .result-icon.approved svg{stroke:var(--ok)}
+  .result-icon.changes{background:rgba(124,111,90,.14)}
+  .result-icon.changes svg{stroke:var(--muted)}
   .field-label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin:0 0 8px}
   textarea{width:100%;min-height:104px;resize:vertical;font-family:inherit;font-size:14px;padding:12px;border:1.5px solid var(--line);border-radius:8px}
   textarea:focus{outline:none;border-color:var(--ink)}
@@ -314,6 +325,18 @@
     <div class="modal-actions">
       <button class="btn" data-close>Cancel</button>
       <button class="btn btn-primary" id="confirmChanges">Send change request</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== МОДАЛКА: РЕЗУЛЬТАТ РЕШЕНИЯ (центрированное подтверждение) ===== -->
+<div class="overlay" id="resultModal" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+  <div class="modal result">
+    <div class="result-icon" id="resIcon"></div>
+    <h3 id="resTitle"></h3>
+    <p id="resBody"></p>
+    <div class="modal-actions center">
+      <button class="btn btn-primary" data-close>Got it</button>
     </div>
   </div>
 </div>
@@ -670,6 +693,28 @@ function renderDecision(d){
 /* ================= модалки ================= */
 function openModal(id){document.getElementById(id).classList.add("open");}
 function closeModal(el){el.classList.remove("open");}
+
+/* центрированное окно-результат после решения */
+const ICONS={
+  approved:`<svg viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  changes:`<svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`
+};
+function showResult(kind, dateStr){
+  const icon=document.getElementById("resIcon");
+  const title=document.getElementById("resTitle");
+  const body=document.getElementById("resBody");
+  if(kind==="approved"){
+    icon.className="result-icon approved"; icon.innerHTML=ICONS.approved;
+    title.textContent="Proof approved";
+    body.textContent=`Thanks — your design is now approved${dateStr?` (${dateStr})`:""} and moving into production. Changes are no longer possible; we'll be in touch with next steps.`;
+  }else{
+    icon.className="result-icon changes"; icon.innerHTML=ICONS.changes;
+    title.textContent="Change request sent";
+    body.textContent=`We've received your requested changes${dateStr?` (${dateStr})`:""}. Our team will update the proof and send you a new version to review.`;
+  }
+  openModal("resultModal");
+}
+
 document.querySelectorAll("[data-close]").forEach(b=>b.onclick=e=>closeModal(e.target.closest(".overlay")));
 document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{if(e.target===o)closeModal(o);}));
 document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".overlay.open").forEach(closeModal);});
@@ -678,7 +723,7 @@ let CURRENT=null;
 document.getElementById("confirmApprove").onclick=async()=>{
   const b=document.getElementById("confirmApprove");b.disabled=true;b.textContent="Approving…";
   try{const res=await API.approve(CURRENT.recordID);closeModal(document.getElementById("approveModal"));
-    CURRENT.status="Proof Approved";CURRENT.approvedDate=res.date||today();renderDecision(CURRENT);window.scrollTo({top:0,behavior:"smooth"});
+    CURRENT.status="Proof Approved";CURRENT.approvedDate=res.date||today();renderDecision(CURRENT);showResult("approved",CURRENT.approvedDate);
   }catch(e){b.disabled=false;b.textContent="Yes, approve";alert("Something went wrong sending your approval. Please try again, or contact your account manager.");}
 };
 document.getElementById("confirmChanges").onclick=async()=>{
@@ -686,7 +731,7 @@ document.getElementById("confirmChanges").onclick=async()=>{
   if(!t){err.style.display="block";return;}err.style.display="none";
   const b=document.getElementById("confirmChanges");b.disabled=true;b.textContent="Sending…";
   try{const res=await API.requestChanges(CURRENT.recordID,{note:t});closeModal(document.getElementById("changesModal"));
-    CURRENT.status="Revision Requested";CURRENT.changeDate=res.date||today();renderDecision(CURRENT);window.scrollTo({top:0,behavior:"smooth"});
+    CURRENT.status="Revision Requested";CURRENT.changeDate=res.date||today();renderDecision(CURRENT);showResult("changes",CURRENT.changeDate);
   }catch(e){b.disabled=false;b.textContent="Send change request";alert("Something went wrong sending your request. Please try again, or contact your account manager.");}
 };
 
