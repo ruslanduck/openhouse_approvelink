@@ -167,8 +167,8 @@
 
   /* --- vector artwork: несколько превью с переносом --- */
   .v-sub{font-size:10.5px;color:var(--muted);letter-spacing:.04em;margin:-8px 0 14px}
-  .vector{display:flex;gap:0;align-items:flex-start}
-  .vector .v-arts{display:flex;flex-wrap:wrap;gap:14px;flex:1 1 auto;min-width:0}
+  .vector{display:flex;gap:0;align-items:flex-start;flex-wrap:wrap}
+  .vector .v-arts{display:flex;flex-wrap:wrap;gap:14px;flex:1 1 160px;min-width:0}
   .vector .v-art{width:clamp(110px,14vw,160px);max-width:100%}
   .vector .v-art img{width:100%;height:auto;display:block;border:1px solid var(--line)}
   .vector .v-art svg{width:100%;height:auto;display:block}
@@ -177,7 +177,8 @@
     min-height:90px;padding:14px;border:1px dashed var(--line);border-radius:6px;
     font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:#faf8f3}
   .vector .v-meta{font-size:11.5px;color:var(--ink-soft);line-height:1.65;padding-left:16px;
-    border-left:1px solid var(--line);margin-left:16px;flex:0 0 auto}
+    border-left:1px solid var(--line);margin-left:16px;flex:0 1 190px;min-width:0;
+    overflow-wrap:anywhere;word-break:break-word}
   .vector .v-meta b{display:block;letter-spacing:.12em;margin-bottom:4px;color:var(--ink);font-size:11px}
   .vector .v-meta .vm-row{margin-bottom:11px}
   .vector .v-meta .vm-row:last-child{margin-bottom:0}
