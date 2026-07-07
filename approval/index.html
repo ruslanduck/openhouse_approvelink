@@ -369,9 +369,9 @@ const MOCK = {
   qty:30,
   variantText:"S / White - 6 pcs\nM / White - 10 pcs\nL / White - 10 pcs\nXL / White - 4 pcs",
   placement:"Front",
-  artworkSize:'W: 28 cm × H: 15.18 cm',
-  frontSize:'W: 28 cm × H: 15.18 cm',
-  backSize:'W: 12 cm × H: 18 cm',
+  artworkSize:'',
+  frontSize:'',
+  backSize:'',
   clientOrderNotes:"",
   frontArtUrl:null,
   status:"Completed", approvedDate:null, changeDate:null
@@ -603,7 +603,7 @@ function renderProofCard(d){
   }
 
   const qtyNote   = d.qtyNote || "Please note colors will be best match to Pantones";
-  const frontSize = String(d.frontSize || d.artworkSize || "").trim();
+  const frontSize = String(d.frontSize || "").trim();
   const backSize  = String(d.backSize || "").trim();
   const notesRaw  = String(d.clientOrderNotes||"").trim();
   const notesHtml = notesRaw ? esc(notesRaw).replace(/\s*\|\|\s*|\r?\n/g,"<br>") : "";
@@ -658,10 +658,10 @@ function renderProofCard(d){
           <div class="v-sub">Artwork placed on product at 100% scale</div>
           <div class="vector">
             <div class="v-arts">${vector}</div>
-            <div class="v-meta">
-              <div class="vm-row"><b>FRONT</b><span>${esc(frontSize)||"—"}</span></div>
+            ${(frontSize||backSize)?`<div class="v-meta">
+              ${frontSize?`<div class="vm-row"><b>FRONT</b><span>${esc(frontSize)}</span></div>`:""}
               ${backSize?`<div class="vm-row"><b>BACK</b><span>${esc(backSize)}</span></div>`:""}
-            </div>
+            </div>`:""}
           </div></div>
       </div>
       ${notesSection}
@@ -690,7 +690,7 @@ function renderDecision(d){
   }
   if(d.status==="Revision Requested"){
     box.innerHTML=`<span class="sh-status changes">Changes requested</span>`;
-    banner.innerHTML=`<div class="resolved changes">We received your change request${d.changeDate?` on ${d.changeDate}`:""}. An updated proof is on the way.</div>`;return;
+    banner.innerHTML=`<div class="resolved changes">Your change request has been received${d.changeDate?` on ${d.changeDate}`:""}. We'll process it and get back to you shortly with an updated proof.</div>`;return;
   }
   banner.innerHTML="";
   box.innerHTML=`<button class="btn" id="makeChanges">Make changes</button>
@@ -719,7 +719,7 @@ function showResult(kind, dateStr){
   }else{
     icon.className="result-icon changes"; icon.innerHTML=ICONS.changes;
     title.textContent="Change request sent";
-    body.textContent=`We've received your requested changes${dateStr?` (${dateStr})`:""}. Our team will update the proof and send you a new version to review.`;
+    body.textContent=`Your change request has been received${dateStr?` (${dateStr})`:""}. We'll process it and get back to you shortly with an updated proof.`;
   }
   openModal("resultModal");
 }
