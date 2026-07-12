@@ -372,6 +372,8 @@ const MOCK = {
   artworkSize:'W: 28 cm × H: 15.18 cm',
   frontSize:'W: 28 cm × H: 15.18 cm',
   backSize:'W: 12 cm × H: 18 cm',
+  frontLabel:'',
+  backLabel:'',
   clientOrderNotes:"",
   frontArtUrl:null,
   status:"Completed", approvedDate:null, changeDate:null
@@ -605,7 +607,9 @@ function renderProofCard(d){
   const qtyNote   = d.qtyNote || "Please note colors will be best match to Pantones";
   const frontSize = String(d.frontSize || "").trim();   // без запасного значения artworkSize
   const backSize  = String(d.backSize  || "").trim();
-  const hasMeta   = !!(frontSize || backSize);          // оба пусты -> блок FRONT/BACK не показываем
+  const hasMeta   = !!(frontSize || backSize);          // оба пусты -> блок подписей не показываем
+  const frontLabel = String(d.frontLabel || "").trim() || "Front";  // подпись из вебхука, дефолт Front
+  const backLabel  = String(d.backLabel  || "").trim() || "Back";   // подпись из вебхука, дефолт Back
   const notesRaw  = String(d.clientOrderNotes||"").trim();
   const notesHtml = notesRaw ? esc(notesRaw).replace(/\s*\|\|\s*|\r?\n/g,"<br>") : "";
 
@@ -660,8 +664,8 @@ function renderProofCard(d){
           <div class="vector">
             <div class="v-arts">${vector}</div>
             ${hasMeta?`<div class="v-meta">
-              ${frontSize?`<div class="vm-row"><b>FRONT</b><span>${esc(frontSize)}</span></div>`:""}
-              ${backSize?`<div class="vm-row"><b>BACK</b><span>${esc(backSize)}</span></div>`:""}
+              ${frontSize?`<div class="vm-row"><b>${esc(frontLabel)}</b><span>${esc(frontSize)}</span></div>`:""}
+              ${backSize?`<div class="vm-row"><b>${esc(backLabel)}</b><span>${esc(backSize)}</span></div>`:""}
             </div>`:""}
           </div></div>
       </div>
