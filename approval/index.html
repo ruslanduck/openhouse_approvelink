@@ -781,49 +781,82 @@ document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{
 document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".overlay.open").forEach(closeModal);});
 
 /* ================= ЗАГРУЗКА АРТВОРКА В DROPBOX =================
-   Вставь token и baseFolder из вашей существующей формы на GitHub.
-   Пока token пустой — поле «Attach artwork files» скрыто, страница работает как раньше. */
+   Механизм и креды перенесены из вашей формы openhouse_art_collection_forms (script.js).
+   Refresh-token flow: app key/secret + refresh token -> короткоживущий access token.
+   Файлы кладутся в ту же структуру, что и интейк-форма: /Artwork Orders/{orderNo}/{productName}. */
 const DROPBOX = {
-  token: "",                                // <-- Dropbox access token (из вашей формы)
-  baseFolder: "/OPENHOUSE Client Uploads",  // корневая папка; подпапка создаётся по номеру заказа
+  APP_KEY:       'swz1bzruuwvzkop',
+  APP_SECRET:    'bndcd2tbdztq3yh',
+  REFRESH_TOKEN: '5nl_-90oG0kAAAAAAAAAAYe9LQrN-pHIEo01fbfcgbjd9M6Fds4r3cao2RdT6kLu',
+  UPLOAD_FOLDER: '/Artwork Orders',
   maxFiles: 5,
   maxSizeMB: 40,
-  enabled(){ return !!this.token; }
+  enabled(){ return !!this.REFRESH_TOKEN; }
 };
 let ATTACHED = [];   // File[]
 
-const sanitizePart = s => String(s||"").replace(/[\\/:*?"<>|]+/g,"-").replace(/\s+/g," ").trim().slice(0,80);
-/* Детерминированное имя папки: при повторной загрузке файлы лягут в ту же папку (existing),
-   иначе Dropbox создаст новую. */
-const folderPathFor = ctx => `${DROPBOX.baseFolder}/${sanitizePart(`${ctx.orderNo||"NO-ORDER"} - ${ctx.productName||"proof"}`)}`;
-
-async function dbxJson(url, args){
-  return fetch(url,{method:"POST",headers:{Authorization:`Bearer ${DROPBOX.token}`,"Content-Type":"application/json"},body:JSON.stringify(args)});
+// HTTP-заголовки должны быть ASCII — экранируем не-ASCII символы в JSON-аргументе
+function asciiJson(obj){
+  return JSON.stringify(obj).replace(/[^\x00-\x7F]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
 }
-async function getFolderShareLink(path){
-  let r = await dbxJson("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",{path});
-  if(r.ok){ return (await r.json()).url; }
-  const e = await r.json().catch(()=>({}));
-  if(e?.error?.[".tag"]==="shared_link_already_exists"){
-    const l = await dbxJson("https://api.dropboxapi.com/2/sharing/list_shared_links",{path,direct_only:true});
-    const lj = await l.json().catch(()=>({}));
-    if(lj.links?.[0]) return lj.links[0].url;
-  }
-  return "";
+let _dbxTokenCache = { token:null, expiresAt:0 };
+async function getDropboxAccessToken(){
+  const now=Date.now();
+  if(_dbxTokenCache.token && now<_dbxTokenCache.expiresAt) return _dbxTokenCache.token;
+  const res=await fetch('https://api.dropbox.com/oauth2/token',{
+    method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'refresh_token',refresh_token:DROPBOX.REFRESH_TOKEN,client_id:DROPBOX.APP_KEY,client_secret:DROPBOX.APP_SECRET})
+  });
+  if(!res.ok) throw new Error('Failed to refresh Dropbox token: '+await res.text());
+  const data=await res.json();
+  _dbxTokenCache.token=data.access_token;
+  _dbxTokenCache.expiresAt=now+(data.expires_in-300)*1000;
+  return data.access_token;
 }
-async function uploadArtworkToDropbox(files, ctx){
-  const folder = folderPathFor(ctx);
-  for(const f of files){
-    const path = `${folder}/${sanitizePart(f.name)}`;
-    const r = await fetch("https://content.dropboxapi.com/2/files/upload",{
-      method:"POST",
-      headers:{Authorization:`Bearer ${DROPBOX.token}`,"Content-Type":"application/octet-stream",
-        "Dropbox-API-Arg":JSON.stringify({path,mode:"add",autorename:true,mute:true})},
-      body:f
+async function uploadFileToDropbox(file, orderId, productName){
+  const token       = await getDropboxAccessToken();
+  const safeId      = String(orderId).replace(/[^\w\-]/g,'_').slice(0,50);
+  const safeName    = String(productName||'').replace(/[^\w\-]/g,'_').trim().slice(0,40) || 'product';
+  const safeFile    = file.name.replace(/[^\w.\-]/g,'_');
+  const folderPath  = `${DROPBOX.UPLOAD_FOLDER}/${safeId}/${safeName}`;
+  const path        = `${folderPath}/${Date.now()}_${safeFile}`;
+  // Создаём папку (409 = уже существует — игнорируем)
+  await fetch('https://api.dropboxapi.com/2/files/create_folder_v2',{
+    method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({path:folderPath,autorename:false})
+  });
+  const up=await fetch('https://content.dropboxapi.com/2/files/upload',{
+    method:'POST',headers:{'Authorization':'Bearer '+token,'Dropbox-API-Arg':asciiJson({path,mode:'add',autorename:true,mute:true}),'Content-Type':'application/octet-stream'},
+    body:file
+  });
+  if(!up.ok) throw new Error(`Dropbox upload failed for "${file.name}": ${(await up.text()).slice(0,300)}`);
+  // Ссылка на папку (переиспользуем существующую при наличии)
+  const linkRes=await fetch('https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',{
+    method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({path:folderPath,settings:{requested_visibility:'public'}})
+  });
+  if(!linkRes.ok){
+    const errBody=await linkRes.json().catch(()=>({}));
+    const existing=errBody?.error?.shared_link_already_exists?.metadata?.url;
+    if(existing) return existing.replace('?dl=0','?dl=1');
+    const listRes=await fetch('https://api.dropboxapi.com/2/sharing/list_shared_links',{
+      method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({path:folderPath,direct_only:true})
     });
-    if(!r.ok) throw new Error("dropbox_upload_failed: "+await r.text());
+    if(listRes.ok){ const link=(await listRes.json()).links?.[0]?.url; if(link) return link.replace('?dl=0','?dl=1'); }
+    throw new Error(`Failed to create Dropbox link for "${file.name}"`);
   }
-  return getFolderShareLink(folder);
+  return (await linkRes.json()).url.replace('?dl=0','?dl=1');
+}
+// Загружает все прикреплённые файлы; все они в одной папке -> возвращаем ссылку на папку
+async function uploadArtworkToDropbox(files, ctx){
+  let folderLink='';
+  for(let i=0;i<files.length;i++){
+    const b=document.getElementById("confirmChanges");
+    if(b) b.textContent=`Uploading ${i+1} of ${files.length}…`;
+    folderLink = await uploadFileToDropbox(files[i], ctx.orderNo, ctx.productName);
+  }
+  return folderLink;
 }
 
 /* --- UI поля загрузки --- */
