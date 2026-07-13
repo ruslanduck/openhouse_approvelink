@@ -341,10 +341,10 @@
       <div class="field-label">Attach artwork files <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
       <label class="attach-drop">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke-linecap="round"/></svg>
-        <span>Click to upload a new artwork file</span>
+        <span>Click to upload, paste a screenshot, or drag &amp; drop</span>
         <input type="file" id="attachInput" multiple>
       </label>
-      <div class="attach-hint">Upload a corrected artwork if you have one. We'll attach it to your request.</div>
+      <div class="attach-hint">Upload a corrected artwork or paste a screenshot (Ctrl/Cmd + V). We'll attach it to your request.</div>
       <div class="err" id="attachErr"></div>
       <div id="attachList"></div>
     </div>
@@ -867,15 +867,43 @@ function renderAttachList(){
 }
 (function initAttach(){
   const input=document.getElementById("attachInput"); if(!input) return;
-  input.onchange=()=>{
-    const err=document.getElementById("attachErr"); err.style.display="none";
-    for(const f of input.files){
-      if(ATTACHED.length>=DROPBOX.maxFiles){ err.textContent=`You can attach up to ${DROPBOX.maxFiles} files.`; err.style.display="block"; break; }
-      if(f.size > DROPBOX.maxSizeMB*1024*1024){ err.textContent=`Each file must be under ${DROPBOX.maxSizeMB} MB.`; err.style.display="block"; continue; }
+  const err=document.getElementById("attachErr");
+  const drop=document.querySelector(".attach-drop");
+
+  function addFiles(files){
+    if(err) err.style.display="none";
+    for(const f0 of files){
+      // скриншоты из буфера часто без имени / "image.png" — даём осмысленное имя
+      let f=f0;
+      if(!f.name || /^image\.\w+$/i.test(f.name)){
+        const ext=(f.type.split("/")[1]||"png").replace("jpeg","jpg");
+        try{ f=new File([f0],`pasted-${Date.now()}.${ext}`,{type:f0.type}); }catch(_){ /* File ctor недоступен — оставляем как есть */ }
+      }
+      if(ATTACHED.length>=DROPBOX.maxFiles){ if(err){err.textContent=`You can attach up to ${DROPBOX.maxFiles} files.`;err.style.display="block";} break; }
+      if(f.size > DROPBOX.maxSizeMB*1024*1024){ if(err){err.textContent=`Each file must be under ${DROPBOX.maxSizeMB} MB.`;err.style.display="block";} continue; }
       ATTACHED.push(f);
     }
-    input.value=""; renderAttachList();
-  };
+    renderAttachList();
+  }
+
+  input.onchange=()=>{ addFiles(input.files); input.value=""; };
+
+  // вставка из буфера (Ctrl/Cmd+V) — работает при открытой модалке правок
+  document.addEventListener("paste",e=>{
+    const modal=document.getElementById("changesModal");
+    if(!modal || !modal.classList.contains("open")) return;
+    const items=(e.clipboardData||window.clipboardData)?.items||[];
+    const imgs=[];
+    for(const it of items){ if(it.kind==="file"){ const f=it.getAsFile(); if(f) imgs.push(f); } }
+    if(imgs.length){ e.preventDefault(); addFiles(imgs); }  // не даём картинке уйти в textarea
+  });
+
+  // drag-and-drop на область загрузки
+  if(drop){
+    ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="var(--ink)";drop.style.background="#faf8f3";}));
+    ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.style.borderColor="";drop.style.background="";}));
+    drop.addEventListener("drop",e=>{ const fs=e.dataTransfer?.files; if(fs&&fs.length) addFiles(fs); });
+  }
 })();
 
 let CURRENT=null;
