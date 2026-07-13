@@ -237,6 +237,19 @@
   textarea{width:100%;min-height:104px;resize:vertical;font-family:inherit;font-size:14px;padding:12px;border:1.5px solid var(--line);border-radius:8px}
   textarea:focus{outline:none;border-color:var(--ink)}
   .err{color:var(--warn);font-size:13px;margin:6px 0 0;display:none}
+  .req{color:var(--warn)}
+  .attach{margin-top:18px}
+  .attach-drop{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line);border-radius:8px;
+    padding:12px 14px;cursor:pointer;color:var(--ink-soft);font-size:13.5px;transition:border-color .15s,background .15s}
+  .attach-drop:hover{border-color:var(--ink);background:#faf8f3}
+  .attach-drop svg{width:18px;height:18px;flex:0 0 auto;stroke:var(--ink-soft)}
+  .attach-drop input{display:none}
+  .attach-hint{font-size:12px;color:var(--muted);margin:6px 0 0}
+  .file-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;
+    border:1px solid var(--line);border-radius:7px;margin-top:8px;font-size:13px}
+  .file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .file-x{border:0;background:none;cursor:pointer;font-size:18px;line-height:1;color:var(--muted);padding:0 2px}
+  .file-x:hover{color:var(--warn)}
 
   /* ================= ПЛАНШЕТ: колонки спецификаций в один столбец, чтобы не переполнялось ================= */
   @media(max-width:900px){
@@ -320,9 +333,21 @@
   <div class="modal">
     <h3 id="chTitle">Request changes</h3>
     <p>Tell us what to adjust and we’ll send you an updated proof.</p>
-    <div class="field-label">Details</div>
+    <div class="field-label">Details <span class="req">*</span></div>
     <textarea id="changeText" placeholder="e.g. Make the logo on the front about 10% smaller and move it up 1 cm."></textarea>
     <div class="err" id="changeErr">Please add a short note so we know what to change.</div>
+
+    <div class="attach" id="attachField" style="display:none">
+      <div class="field-label">Attach artwork files <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+      <label class="attach-drop">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke-linecap="round"/></svg>
+        <span>Click to upload a new artwork file</span>
+        <input type="file" id="attachInput" multiple>
+      </label>
+      <div class="attach-hint">Upload a corrected artwork if you have one. We'll attach it to your request.</div>
+      <div class="err" id="attachErr"></div>
+      <div id="attachList"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn" data-close>Cancel</button>
       <button class="btn btn-primary" id="confirmChanges">Send change request</button>
@@ -401,7 +426,7 @@ const API = {
   },
   async requestChanges(id,p){
     if(USE_MOCK){ await wait(700); return {ok:true,date:today()}; }
-    const body=new URLSearchParams({id,action:"changes",note:p.note||"",categories:(p.categories||[]).join(", ")});
+    const body=new URLSearchParams({id,action:"changes",note:p.note||"",categories:(p.categories||[]).join(", "),artworkFolder:p.artworkFolder||""});
     const r=await fetch(WEBHOOK_DECISION,{method:"POST",body});
     if(!r.ok) throw new Error("changes_failed");
     return r.json().catch(()=>({ok:true,date:today()}));
@@ -716,7 +741,14 @@ function renderDecision(d){
   box.innerHTML=`<button class="btn" id="makeChanges">Make changes</button>
     <button class="btn btn-primary" id="approve">Approve</button>`;
   document.getElementById("approve").onclick=()=>openModal("approveModal");
-  document.getElementById("makeChanges").onclick=()=>openModal("changesModal");
+  document.getElementById("makeChanges").onclick=()=>{
+    document.getElementById("changeText").value="";
+    document.getElementById("changeErr").style.display="none";
+    const ae=document.getElementById("attachErr"); if(ae) ae.style.display="none";
+    ATTACHED=[]; renderAttachList();
+    const af=document.getElementById("attachField"); if(af) af.style.display=DROPBOX.enabled()?"":"none";
+    openModal("changesModal");
+  };
 }
 
 /* ================= модалки ================= */
@@ -748,6 +780,71 @@ document.querySelectorAll("[data-close]").forEach(b=>b.onclick=e=>closeModal(e.t
 document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{if(e.target===o)closeModal(o);}));
 document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".overlay.open").forEach(closeModal);});
 
+/* ================= ЗАГРУЗКА АРТВОРКА В DROPBOX =================
+   Вставь token и baseFolder из вашей существующей формы на GitHub.
+   Пока token пустой — поле «Attach artwork files» скрыто, страница работает как раньше. */
+const DROPBOX = {
+  token: "",                                // <-- Dropbox access token (из вашей формы)
+  baseFolder: "/OPENHOUSE Client Uploads",  // корневая папка; подпапка создаётся по номеру заказа
+  maxFiles: 5,
+  maxSizeMB: 40,
+  enabled(){ return !!this.token; }
+};
+let ATTACHED = [];   // File[]
+
+const sanitizePart = s => String(s||"").replace(/[\\/:*?"<>|]+/g,"-").replace(/\s+/g," ").trim().slice(0,80);
+/* Детерминированное имя папки: при повторной загрузке файлы лягут в ту же папку (existing),
+   иначе Dropbox создаст новую. */
+const folderPathFor = ctx => `${DROPBOX.baseFolder}/${sanitizePart(`${ctx.orderNo||"NO-ORDER"} - ${ctx.productName||"proof"}`)}`;
+
+async function dbxJson(url, args){
+  return fetch(url,{method:"POST",headers:{Authorization:`Bearer ${DROPBOX.token}`,"Content-Type":"application/json"},body:JSON.stringify(args)});
+}
+async function getFolderShareLink(path){
+  let r = await dbxJson("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",{path});
+  if(r.ok){ return (await r.json()).url; }
+  const e = await r.json().catch(()=>({}));
+  if(e?.error?.[".tag"]==="shared_link_already_exists"){
+    const l = await dbxJson("https://api.dropboxapi.com/2/sharing/list_shared_links",{path,direct_only:true});
+    const lj = await l.json().catch(()=>({}));
+    if(lj.links?.[0]) return lj.links[0].url;
+  }
+  return "";
+}
+async function uploadArtworkToDropbox(files, ctx){
+  const folder = folderPathFor(ctx);
+  for(const f of files){
+    const path = `${folder}/${sanitizePart(f.name)}`;
+    const r = await fetch("https://content.dropboxapi.com/2/files/upload",{
+      method:"POST",
+      headers:{Authorization:`Bearer ${DROPBOX.token}`,"Content-Type":"application/octet-stream",
+        "Dropbox-API-Arg":JSON.stringify({path,mode:"add",autorename:true,mute:true})},
+      body:f
+    });
+    if(!r.ok) throw new Error("dropbox_upload_failed: "+await r.text());
+  }
+  return getFolderShareLink(folder);
+}
+
+/* --- UI поля загрузки --- */
+function renderAttachList(){
+  const list=document.getElementById("attachList"); if(!list) return;
+  list.innerHTML = ATTACHED.map((f,i)=>`<div class="file-row"><span class="file-name">${esc(f.name)}</span><button type="button" class="file-x" data-i="${i}" aria-label="Remove">&times;</button></div>`).join("");
+  list.querySelectorAll(".file-x").forEach(b=>b.onclick=()=>{ATTACHED.splice(+b.dataset.i,1);renderAttachList();});
+}
+(function initAttach(){
+  const input=document.getElementById("attachInput"); if(!input) return;
+  input.onchange=()=>{
+    const err=document.getElementById("attachErr"); err.style.display="none";
+    for(const f of input.files){
+      if(ATTACHED.length>=DROPBOX.maxFiles){ err.textContent=`You can attach up to ${DROPBOX.maxFiles} files.`; err.style.display="block"; break; }
+      if(f.size > DROPBOX.maxSizeMB*1024*1024){ err.textContent=`Each file must be under ${DROPBOX.maxSizeMB} MB.`; err.style.display="block"; continue; }
+      ATTACHED.push(f);
+    }
+    input.value=""; renderAttachList();
+  };
+})();
+
 let CURRENT=null;
 document.getElementById("confirmApprove").onclick=async()=>{
   const b=document.getElementById("confirmApprove");b.disabled=true;b.textContent="Approving…";
@@ -758,8 +855,16 @@ document.getElementById("confirmApprove").onclick=async()=>{
 document.getElementById("confirmChanges").onclick=async()=>{
   const t=document.getElementById("changeText").value.trim();const err=document.getElementById("changeErr");
   if(!t){err.style.display="block";return;}err.style.display="none";
-  const b=document.getElementById("confirmChanges");b.disabled=true;b.textContent="Sending…";
-  try{const res=await API.requestChanges(CURRENT.recordID,{note:t});closeModal(document.getElementById("changesModal"));
+  const b=document.getElementById("confirmChanges");b.disabled=true;
+  try{
+    let folderLink="";
+    if(DROPBOX.enabled() && ATTACHED.length){
+      b.textContent="Uploading files…";
+      folderLink=await uploadArtworkToDropbox(ATTACHED, CURRENT);
+    }
+    b.textContent="Sending…";
+    const res=await API.requestChanges(CURRENT.recordID,{note:t,artworkFolder:folderLink});
+    closeModal(document.getElementById("changesModal"));
     CURRENT.status="Revision Requested";CURRENT.changeDate=res.date||today();renderDecision(CURRENT);showResult("changes",CURRENT.changeDate);
   }catch(e){b.disabled=false;b.textContent="Send change request";alert("Something went wrong sending your request. Please try again, or contact your account manager.");}
 };
