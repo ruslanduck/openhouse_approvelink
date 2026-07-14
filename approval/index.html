@@ -120,6 +120,15 @@
   .oh-key{width:22px;height:11px;color:var(--ink-soft);flex:0 0 auto}
 
   .p-mockup-label{text-align:center;margin:26px 0 2px;font-size:12px;letter-spacing:.16em;color:var(--ink-soft)}
+  .mockup-group{position:relative}
+  .pdf-dl{position:absolute;top:0;right:0;z-index:5;display:inline-flex;align-items:center;gap:6px;
+    font-family:inherit;font-size:12px;font-weight:600;letter-spacing:.04em;cursor:pointer;
+    padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:var(--paper,#fff);
+    color:var(--ink);transition:border-color .15s,background .15s,box-shadow .15s;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .pdf-dl:hover{border-color:var(--ink);background:#faf8f3}
+  .pdf-dl svg{width:15px;height:15px;stroke:currentColor;flex:0 0 auto}
+  .pdf-dl[disabled]{opacity:.6;cursor:default}
+  @media(max-width:520px){.pdf-dl span{display:none}.pdf-dl{padding:9px}}
   .p-mockup-label small{display:block;color:var(--muted);letter-spacing:.2em;margin-top:3px;font-size:10px}
 
   /* реальное фото-мокап из Airtable — одно крупное, несколько в ряд */
@@ -671,6 +680,7 @@ function renderProofCard(d){
     </div>
 
     <div class="reveal mockup-group">
+      ${isVendorMode()?`<button class="pdf-dl" type="button" title="Download PDF" aria-label="Download PDF"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span>Download PDF</span></button>`:""}
       <div class="p-mockup-label">PRODUCT MOCKUP<small>${esc(d.scale)}</small></div>
       ${mockupBlock}
       <div class="measure">${esc(formatMeasure(d.measureLine))}</div>
@@ -793,18 +803,8 @@ function renderDecision(d){
   const box=document.getElementById("decision");
   const banner=document.getElementById("statusBanner");
   const vendor=isVendorMode();
-  // Вендор-пруф: всегда без кнопок взаимодействия, только Download PDF (независимо от статуса)
-  if(vendor){
-    banner.innerHTML="";
-    box.innerHTML=`<button class="btn" id="downloadPdf">Download PDF</button>`;
-    document.getElementById("downloadPdf").onclick=async ev=>{
-      const bt=ev.currentTarget, orig=bt.textContent; bt.disabled=true; bt.textContent="Preparing PDF…";
-      try{ await buildVendorPdf(d); }
-      catch(e){ alert("Sorry, the PDF could not be generated. Please try again."); }
-      finally{ bt.disabled=false; bt.textContent=orig; }
-    };
-    return;
-  }
+  // Вендор-пруф: без кнопок взаимодействия в шапке (Download PDF — иконкой на картинке)
+  if(vendor){ banner.innerHTML=""; box.innerHTML=""; return; }
   if(d.status==="Proof Approved"||d.status==="Approved"){
     box.innerHTML=`<span class="sh-status approved">Approved</span>`;
     banner.innerHTML=`<div class="resolved approved">Approved${d.approvedDate?` on ${d.approvedDate}`:""}. Thanks — your design is now in production.</div>`;return;
@@ -984,6 +984,17 @@ function renderAttachList(){
     drop.addEventListener("drop",e=>{ const fs=e.dataTransfer?.files; if(fs&&fs.length) addFiles(fs); });
   }
 })();
+
+// клик по иконке скачивания на мокапе (вендор-пруф)
+document.addEventListener("click",async e=>{
+  const btn=e.target.closest(".pdf-dl"); if(!btn) return;
+  if(btn.disabled) return;
+  const label=btn.querySelector("span"), orig=label?label.textContent:"";
+  btn.disabled=true; if(label) label.textContent="Preparing…";
+  try{ await buildVendorPdf(CURRENT); }
+  catch(err){ alert("Sorry, the PDF could not be generated. Please try again."); }
+  finally{ btn.disabled=false; if(label) label.textContent=orig; }
+});
 
 let CURRENT=null;
 document.getElementById("confirmApprove").onclick=async()=>{
