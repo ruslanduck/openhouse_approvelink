@@ -729,6 +729,7 @@ function renderProof(d){
 function renderDecision(d){
   const box=document.getElementById("decision");
   const banner=document.getElementById("statusBanner");
+  const vendor=isVendorMode();
   if(d.status==="Proof Approved"||d.status==="Approved"){
     box.innerHTML=`<span class="sh-status approved">Approved</span>`;
     banner.innerHTML=`<div class="resolved approved">Approved${d.approvedDate?` on ${d.approvedDate}`:""}. Thanks — your design is now in production.</div>`;return;
@@ -738,6 +739,8 @@ function renderDecision(d){
     banner.innerHTML=`<div class="resolved changes">Your change request has been received${d.changeDate?` on ${d.changeDate}`:""}. We'll process it and get back to you shortly with an updated proof.</div>`;return;
   }
   banner.innerHTML="";
+  // Кнопки взаимодействия скрываем: (1) на вендор-ссылке всегда; (2) при статусе Completed/Complete
+  if(vendor || d.status==="Completed" || d.status==="Complete"){ box.innerHTML=""; return; }
   box.innerHTML=`<button class="btn" id="makeChanges">Make changes</button>
     <button class="btn btn-primary" id="approve">Approve</button>`;
   document.getElementById("approve").onclick=()=>openModal("approveModal");
