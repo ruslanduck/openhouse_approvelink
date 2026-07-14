@@ -281,7 +281,7 @@
     .qty-note{max-width:none}
     .sf-inner{flex-direction:column;gap:18px}
   }
-</style>
+</style>  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -749,10 +749,62 @@ function isProofComplete(d){
   return hasVal && hasProofColors(d) && hasImg;
 }
 
+/* ============ СКАЧИВАНИЕ PDF (вендор-пруф) ============ */
+function _loadImgEl(src){
+  return new Promise((res,rej)=>{ const im=new Image(); im.crossOrigin="anonymous";
+    im.onload=()=>res(im); im.onerror=()=>rej(new Error("img load failed")); im.src=src; });
+}
+// грузим картинку в dataURL; airtable-ссылки часто без CORS -> при ошибке/taint пробуем через прокси weserv
+async function loadImageData(url){
+  const attempt=async(src)=>{
+    const im=await _loadImgEl(src);
+    const c=document.createElement("canvas");
+    c.width=im.naturalWidth||im.width; c.height=im.naturalHeight||im.height;
+    c.getContext("2d").drawImage(im,0,0);
+    return { data:c.toDataURL("image/jpeg",0.92), w:c.width, h:c.height };  // бросит исключение при tainted canvas
+  };
+  try{ return await attempt(url); }
+  catch(e){ return await attempt("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,"")); }
+}
+async function buildVendorPdf(d){
+  if(!window.jspdf) throw new Error("jsPDF not loaded");
+  const { jsPDF } = window.jspdf;
+  const urls=[];
+  parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(u));  // hi-res мокап
+  collectVectorImages(d).forEach(u=>urls.push(u));                                          // артворк
+  if(!urls.length) throw new Error("no images");
+  const doc=new jsPDF({unit:"pt",format:"a4"});
+  const pw=doc.internal.pageSize.getWidth(), ph=doc.internal.pageSize.getHeight(), m=36;
+  let placed=0;
+  for(const u of urls){
+    let im; try{ im=await loadImageData(u); }catch(e){ continue; }
+    if(placed>0) doc.addPage();
+    const maxW=pw-m*2, maxH=ph-m*2, r=Math.min(maxW/im.w, maxH/im.h);
+    const w=im.w*r, h=im.h*r;
+    doc.addImage(im.data,"JPEG",(pw-w)/2,(ph-h)/2,w,h);
+    placed++;
+  }
+  if(!placed) throw new Error("all images failed");
+  const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
+  doc.save(`${safe(d.orderNo)||"proof"}_${safe(d.productName)}_proof.pdf`);
+}
+
 function renderDecision(d){
   const box=document.getElementById("decision");
   const banner=document.getElementById("statusBanner");
   const vendor=isVendorMode();
+  // Вендор-пруф: всегда без кнопок взаимодействия, только Download PDF (независимо от статуса)
+  if(vendor){
+    banner.innerHTML="";
+    box.innerHTML=`<button class="btn" id="downloadPdf">Download PDF</button>`;
+    document.getElementById("downloadPdf").onclick=async ev=>{
+      const bt=ev.currentTarget, orig=bt.textContent; bt.disabled=true; bt.textContent="Preparing PDF…";
+      try{ await buildVendorPdf(d); }
+      catch(e){ alert("Sorry, the PDF could not be generated. Please try again."); }
+      finally{ bt.disabled=false; bt.textContent=orig; }
+    };
+    return;
+  }
   if(d.status==="Proof Approved"||d.status==="Approved"){
     box.innerHTML=`<span class="sh-status approved">Approved</span>`;
     banner.innerHTML=`<div class="resolved approved">Approved${d.approvedDate?` on ${d.approvedDate}`:""}. Thanks — your design is now in production.</div>`;return;
@@ -762,8 +814,7 @@ function renderDecision(d){
     banner.innerHTML=`<div class="resolved changes">Your change request has been received${d.changeDate?` on ${d.changeDate}`:""}. We'll process it and get back to you shortly with an updated proof.</div>`;return;
   }
   banner.innerHTML="";
-  // Кнопки взаимодействия скрываем: (1) на вендор-ссылке всегда; (2) при статусе Completed/Complete
-  if(vendor || d.status==="Completed" || d.status==="Complete"){ box.innerHTML=""; return; }
+  if(d.status==="Completed" || d.status==="Complete"){ box.innerHTML=""; return; }
   // Approve скрываем, если пустые обязательные поля (artwork label+значение, цвета, картинка)
   const complete=isProofComplete(d);
   box.innerHTML=`<button class="btn" id="makeChanges">Make changes</button>
