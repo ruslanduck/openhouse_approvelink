@@ -183,7 +183,7 @@
   .vector .v-meta .vm-row{margin-bottom:14px}
   .vector .v-meta .vm-row:last-child{margin-bottom:0}
   .vector .v-meta .vm-row span{display:block}
-  .blank-order{font-size:14px;color:var(--ink-soft);margin-top:10px;letter-spacing:.02em}
+  .blank-order{font-size:14px;color:var(--ink-soft);letter-spacing:.02em}
 
   /* ================= ФУТЕР ================= */
   .site-footer{margin-top:56px;border-top:1.5px solid var(--line-ink);background:var(--paper)}
@@ -688,7 +688,7 @@ function renderProofCard(d){
       </div>
       <div class="section s-vector reveal">
         ${isBlankOrder(d)
-          ? `<div class="spec"><h4>Client Vector Artwork</h4><div class="blank-order">This is a blank order</div></div>`
+          ? `<div class="spec"><div class="blank-order">This is a blank order</div></div>`
           : `<div class="spec"><h4>Client Vector Artwork</h4>
           <div class="v-sub">Artwork placed on product at 100% scale</div>
           <div class="vector">
