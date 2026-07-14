@@ -178,7 +178,14 @@
   .v-sub{font-size:10.5px;color:var(--muted);letter-spacing:.04em;margin:-8px 0 14px}
   .vector{display:flex;gap:0;align-items:flex-start}
   .vector .v-arts{display:flex;flex-wrap:wrap;gap:14px;flex:1 1 auto;min-width:0}
-  .vector .v-art{width:clamp(110px,14vw,160px);max-width:100%}
+  .vector .v-art{width:clamp(110px,14vw,160px);max-width:100%;position:relative}
+  .art-dl{position:absolute;top:6px;right:6px;display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:30px;padding:0;cursor:pointer;border:1px solid var(--line);border-radius:8px;
+    background:rgba(255,255,255,.92);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12);
+    transition:border-color .15s,background .15s}
+  .art-dl:hover{border-color:var(--ink);background:#fff}
+  .art-dl svg{width:15px;height:15px;stroke:currentColor}
+  .art-dl[disabled]{opacity:.55;cursor:default}
   .vector .v-art img{width:100%;height:auto;display:block;border:1px solid var(--line)}
   .vector .v-art svg{width:100%;height:auto;display:block}
   /* заглушка, если картинка не загрузилась (битая/просроченная ссылка) */
@@ -578,7 +585,7 @@ function renderProofCard(d){
 
   const vectorImgs = collectVectorImages(d);
   const vector = vectorImgs.length
-    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(u)}" alt="Vector artwork" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="img-missing" style="display:none">Image link expired<br>or unavailable</div></div>`).join("")
+    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(u)}" alt="Vector artwork" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="img-missing" style="display:none">Image link expired<br>or unavailable</div>${isVendorMode()?`<button class="art-dl" type="button" title="Download artwork" aria-label="Download artwork" data-url="${esc(u)}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>`:""}</div>`).join("")
     : `<div class="v-art">${artPlaceholder()}</div>`;
 
   /* --- цвета: новый формат (Design Colors) или старый --- */
@@ -985,6 +992,18 @@ function renderAttachList(){
   }
 })();
 
+// скачивание оригинального файла картинки (blob), airtable часто без CORS -> fallback через weserv
+async function downloadImageFile(url, filename){
+  let blob;
+  try{ const r=await fetch(url,{mode:"cors"}); if(!r.ok) throw 0; blob=await r.blob(); }
+  catch(e){ const r=await fetch("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,""),{mode:"cors"}); blob=await r.blob(); }
+  const ext=(blob.type.split("/")[1]||"png").replace("jpeg","jpg");
+  const a=document.createElement("a"), u=URL.createObjectURL(blob);
+  a.href=u; a.download=/\.\w+$/.test(filename)?filename:`${filename}.${ext}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),1500);
+}
+
 // клик по иконке скачивания на мокапе (вендор-пруф)
 document.addEventListener("click",async e=>{
   const btn=e.target.closest(".pdf-dl"); if(!btn) return;
@@ -994,6 +1013,18 @@ document.addEventListener("click",async e=>{
   try{ await buildVendorPdf(CURRENT); }
   catch(err){ alert("Sorry, the PDF could not be generated. Please try again."); }
   finally{ btn.disabled=false; if(label) label.textContent=orig; }
+});
+
+// клик по иконке скачивания на вектор-артворке (вендор-пруф)
+document.addEventListener("click",async e=>{
+  const btn=e.target.closest(".art-dl"); if(!btn||btn.disabled) return;
+  const url=btn.getAttribute("data-url"); if(!url) return;
+  btn.disabled=true;
+  const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
+  const name=`${safe(CURRENT&&CURRENT.orderNo)||"artwork"}_${safe(CURRENT&&CURRENT.productName)}_artwork`;
+  try{ await downloadImageFile(url,name); }
+  catch(err){ alert("Sorry, the artwork could not be downloaded. Please try again."); }
+  finally{ btn.disabled=false; }
 });
 
 let CURRENT=null;
