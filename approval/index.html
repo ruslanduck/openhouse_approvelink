@@ -183,6 +183,7 @@
   .vector .v-meta .vm-row{margin-bottom:14px}
   .vector .v-meta .vm-row:last-child{margin-bottom:0}
   .vector .v-meta .vm-row span{display:block}
+  .blank-order{font-size:14px;color:var(--ink-soft);margin-top:10px;letter-spacing:.02em}
 
   /* ================= ФУТЕР ================= */
   .site-footer{margin-top:56px;border-top:1.5px solid var(--line-ink);background:var(--paper)}
@@ -402,6 +403,7 @@ const MOCK = {
   backLabel:'',
   clientOrderNotes:"",
   frontArtUrl:null,
+  blankOrder:0,
   status:"Completed", approvedDate:null, changeDate:null
 };
 
@@ -685,7 +687,9 @@ function renderProofCard(d){
         ${sizeBlock}
       </div>
       <div class="section s-vector reveal">
-        <div class="spec"><h4>Client Vector Artwork</h4>
+        ${isBlankOrder(d)
+          ? `<div class="spec"><h4>Client Vector Artwork</h4><div class="blank-order">This is a blank order</div></div>`
+          : `<div class="spec"><h4>Client Vector Artwork</h4>
           <div class="v-sub">Artwork placed on product at 100% scale</div>
           <div class="vector">
             <div class="v-arts">${vector}</div>
@@ -693,7 +697,7 @@ function renderProofCard(d){
               ${frontSize?`<div class="vm-row"><b>${esc(frontLabel)}</b><span>${esc(frontSize)}</span></div>`:""}
               ${backSize?`<div class="vm-row"><b>${esc(backLabel)}</b><span>${esc(backSize)}</span></div>`:""}
             </div>`:""}
-          </div></div>
+          </div></div>`}
       </div>
       ${notesSection}
     </div>
@@ -726,6 +730,25 @@ function renderProof(d){
 }
 
 /* ================= кнопки в хедере / статус ================= */
+/* заказ без артворка: чекбокс в Airtable -> blankOrder в вебхуке */
+function isBlankOrder(d){
+  return d.blankOrder===true||d.blankOrder===1||d.blankOrder==="1"||d.blankOrder==="true"||d.blankOrder==="yes";
+}
+/* есть ли цвета (новый или старый формат) */
+function hasProofColors(d){
+  if(parseColors(d).length) return true;
+  const base=buildBaseColors(d);
+  return !!(base&&base.length);
+}
+/* обязательные поля для валидного прува: хотя бы один artwork label+значение, цвета и картинка.
+   blank order считается заполненным (артворк не требуется). */
+function isProofComplete(d){
+  if(isBlankOrder(d)) return true;
+  const hasVal=!!(String(d.frontSize||"").trim()||String(d.backSize||"").trim());
+  const hasImg=collectVectorImages(d).length>0;
+  return hasVal && hasProofColors(d) && hasImg;
+}
+
 function renderDecision(d){
   const box=document.getElementById("decision");
   const banner=document.getElementById("statusBanner");
@@ -741,9 +764,11 @@ function renderDecision(d){
   banner.innerHTML="";
   // Кнопки взаимодействия скрываем: (1) на вендор-ссылке всегда; (2) при статусе Completed/Complete
   if(vendor || d.status==="Completed" || d.status==="Complete"){ box.innerHTML=""; return; }
+  // Approve скрываем, если пустые обязательные поля (artwork label+значение, цвета, картинка)
+  const complete=isProofComplete(d);
   box.innerHTML=`<button class="btn" id="makeChanges">Make changes</button>
-    <button class="btn btn-primary" id="approve">Approve</button>`;
-  document.getElementById("approve").onclick=()=>openModal("approveModal");
+    ${complete?`<button class="btn btn-primary" id="approve">Approve</button>`:""}`;
+  if(complete) document.getElementById("approve").onclick=()=>openModal("approveModal");
   document.getElementById("makeChanges").onclick=()=>{
     document.getElementById("changeText").value="";
     document.getElementById("changeErr").style.display="none";
