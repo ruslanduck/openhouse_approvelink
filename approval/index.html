@@ -499,6 +499,15 @@ const COLOR_HEX = {
 };
 function hexForName(name){return COLOR_HEX[String(name||"").trim().toLowerCase()] || "#CFC8B8";}
 
+/* нормализация hex: "000000" -> "#000000", "#000000" остаётся как есть,
+   имя CSS-цвета ("red") не трогаем, пусто -> "" */
+function normHex(v){
+  v=String(v||"").trim();
+  if(!v||v==="#") return "";
+  if(v[0]==="#") return v;
+  return /^[0-9a-fA-F]{3,8}$/.test(v) ? "#"+v : v;
+}
+
 /* 1–2 базовых цвета из старого формата */
 function buildBaseColors(d){
   let names;
@@ -507,18 +516,18 @@ function buildBaseColors(d){
   else                                                                    names = d.baseColor ? [d.baseColor.name] : [];
   names = [...new Set(names.map(n=>String(n).trim()).filter(Boolean))];
   if(!names.length) return [];
-  const airHex = d.baseColorHex || (d.baseColor && d.baseColor.hex) || null;
-  return names.map((name,i)=>({ name, hex: (i===0 && airHex && airHex!=="#") ? airHex : hexForName(name) }));
+  const airHex = normHex(d.baseColorHex || (d.baseColor && d.baseColor.hex) || "");
+  return names.map((name,i)=>({ name, hex: (i===0 && airHex) ? airHex : hexForName(name) }));
 }
 
 /* новый формат: "Name|Hex|Type;;..." из Design Colors (Type: Base/Thread/Imprint) */
 function parseColors(d){
   const raw = d.colors;
-  if(Array.isArray(raw)) return raw.map(c=>({name:String(c.name||c.Name||"").trim(),hex:String(c.hex||c.Hex||"").trim(),type:String(c.type||c.Type||"").trim().toLowerCase()}));
+  if(Array.isArray(raw)) return raw.map(c=>({name:String(c.name||c.Name||"").trim(),hex:normHex(c.hex||c.Hex),type:String(c.type||c.Type||"").trim().toLowerCase()}));
   if(typeof raw!=="string" || !raw.trim()) return [];
   return raw.split(/;;|\r?\n/).map(s=>s.trim()).filter(Boolean).map(row=>{
     const p = row.split("|").map(x=>(x||"").trim());
-    return { name:p[0]||"", hex:p[1]||"", type:(p[2]||"").trim().toLowerCase() };
+    return { name:p[0]||"", hex:normHex(p[1]), type:(p[2]||"").trim().toLowerCase() };
   }).filter(c=>c.hex||c.name);
 }
 
