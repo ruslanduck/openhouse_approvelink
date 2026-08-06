@@ -687,10 +687,12 @@ function renderProofCard(d){
 
     <div class="p-meta reveal">
       <div class="left">
-        PREPARED FOR: ${esc(d.preparedFor)}<span class="sep">/</span>
-        DATE: ${fmtDate(d.date)}<span class="sep">/</span>
-        PRINT METHOD: ${esc(d.printMethod)}<span class="sep">/</span>
-        PROOF: ${esc(d.proofVersion)}
+        ${[
+          d.preparedFor ? `PREPARED FOR: ${esc(d.preparedFor)}` : "",
+          fmtDate(d.date) ? `DATE: ${fmtDate(d.date)}` : "",
+          String(d.printMethod||"").trim() ? `PRINT METHOD: ${esc(d.printMethod)}` : "",
+          d.proofVersion ? `PROOF: ${esc(d.proofVersion)}` : ""
+        ].filter(Boolean).join(`<span class="sep">/</span>`)}
       </div>
       <div class="right">${keyIcon}PRODUCT ${esc(d.productCode)}</div>
     </div>
