@@ -499,15 +499,6 @@ const COLOR_HEX = {
 };
 function hexForName(name){return COLOR_HEX[String(name||"").trim().toLowerCase()] || "#CFC8B8";}
 
-/* нормализация hex: "000000" -> "#000000", "#000000" остаётся как есть,
-   имя CSS-цвета ("red") не трогаем, пусто -> "" */
-function normHex(v){
-  v=String(v||"").trim();
-  if(!v||v==="#") return "";
-  if(v[0]==="#") return v;
-  return /^[0-9a-fA-F]{3,8}$/.test(v) ? "#"+v : v;
-}
-
 /* 1–2 базовых цвета из старого формата */
 function buildBaseColors(d){
   let names;
@@ -516,18 +507,18 @@ function buildBaseColors(d){
   else                                                                    names = d.baseColor ? [d.baseColor.name] : [];
   names = [...new Set(names.map(n=>String(n).trim()).filter(Boolean))];
   if(!names.length) return [];
-  const airHex = normHex(d.baseColorHex || (d.baseColor && d.baseColor.hex) || "");
-  return names.map((name,i)=>({ name, hex: (i===0 && airHex) ? airHex : hexForName(name) }));
+  const airHex = d.baseColorHex || (d.baseColor && d.baseColor.hex) || null;
+  return names.map((name,i)=>({ name, hex: (i===0 && airHex && airHex!=="#") ? airHex : hexForName(name) }));
 }
 
 /* новый формат: "Name|Hex|Type;;..." из Design Colors (Type: Base/Thread/Imprint) */
 function parseColors(d){
   const raw = d.colors;
-  if(Array.isArray(raw)) return raw.map(c=>({name:String(c.name||c.Name||"").trim(),hex:normHex(c.hex||c.Hex),type:String(c.type||c.Type||"").trim().toLowerCase()}));
+  if(Array.isArray(raw)) return raw.map(c=>({name:String(c.name||c.Name||"").trim(),hex:String(c.hex||c.Hex||"").trim(),type:String(c.type||c.Type||"").trim().toLowerCase()}));
   if(typeof raw!=="string" || !raw.trim()) return [];
   return raw.split(/;;|\r?\n/).map(s=>s.trim()).filter(Boolean).map(row=>{
     const p = row.split("|").map(x=>(x||"").trim());
-    return { name:p[0]||"", hex:normHex(p[1]), type:(p[2]||"").trim().toLowerCase() };
+    return { name:p[0]||"", hex:p[1]||"", type:(p[2]||"").trim().toLowerCase() };
   }).filter(c=>c.hex||c.name);
 }
 
@@ -625,8 +616,8 @@ function renderProofCard(d){
   const mockupBlock = mockups.length
     ? `<div class="mockup-photos${mockups.length===1?" single":""}">
          ${mockups.map(u=>`<div class="mockup-photo">
-           <img src="${esc(u)}" alt="Product mockup" loading="lazy"
-                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <img src="${esc(mockupSrc(u,d._mockW||1400))}" alt="Product mockup" loading="lazy" data-fb="${esc(d._thumb||u)}"
+                onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.dataset.fb='';}else{this.style.display='none';this.nextElementSibling.style.display='flex';}">
            <div class="img-missing" style="display:none;min-height:200px">Mockup image link expired or unavailable</div>
          </div>`).join("")}
        </div>`
@@ -740,12 +731,20 @@ function isVendorMode(){
   return false;
 }
 
+/* мокап через wsrv: PDF рендерится в JPEG, картинки ужимаются до нужной ширины (CORS ok) */
+function mockupSrc(url,w){
+  if(!url) return "";
+  if(/^data:|wsrv\.nl|images\.weserv\.nl/.test(url)) return url;   // уже прокси/data — не трогаем
+  return "https://wsrv.nl/?url=ssl:"+url.replace(/^https?:\/\//,"")+"&w="+(w||1400)+"&output=jpg";
+}
+
 /* несколько mockupUrl (через ;;) -> полная копия карточки на каждую фотку */
 function renderProof(d){
   const vendor = isVendorMode();
-  const source = vendor ? (d.mockupHighUrl || d.mockupHigh || d.mockupUrl) : d.mockupUrl;
+  const orig   = d.mockupHighUrl || d.mockupHigh;      // оригинальный файл (PDF/картинка) для hi-res
+  const source = orig || d.mockupUrl;                  // если оригинала нет — старое поведение
   const kind   = vendor ? "VENDOR PROOF" : (d.proofKind || "CLIENT PROOF");
-  const dd     = { ...d, _proofKind: kind };
+  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? 2200 : 1400 };
   const mockups = parseImageUrls(source);
   if (!mockups || mockups.length === 0) {
     return `<div class="proof-wrap">${renderProofCard(dd)}</div>`;
@@ -796,7 +795,7 @@ async function buildVendorPdf(d){
   if(!window.jspdf) throw new Error("jsPDF not loaded");
   const { jsPDF } = window.jspdf;
   const urls=[];
-  parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(u));  // hi-res мокап
+  parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(mockupSrc(u,2200)));  // hi-res мокап (PDF->JPEG через wsrv)
   collectVectorImages(d).forEach(u=>urls.push(u));                                          // артворк
   if(!urls.length) throw new Error("no images");
   const doc=new jsPDF({unit:"pt",format:"a4"});
