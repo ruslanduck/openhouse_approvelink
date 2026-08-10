@@ -136,6 +136,7 @@ a{color:inherit}
 .order__no{font-family:var(--mono);font-size:13.5px;letter-spacing:-.01em;font-weight:400}
 .order__date{font-size:13.5px;color:var(--ink-2)}
 .order__addr{font-size:13px;line-height:1.45;color:var(--ink-2)}
+.order__sum{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--ink-3);margin-top:7px;white-space:nowrap}
 .order__addr b{color:var(--ink);font-weight:600}
 .order__caret{align-self:center;justify-self:end;color:var(--ink-3);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
 .order.is-open .order__caret{transform:rotate(180deg);color:var(--ink)}
@@ -379,7 +380,7 @@ a{color:inherit}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p8-join-fix',
+  VERSION: 'p10-summary-on-row',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -620,7 +621,7 @@ function joinOrdersAndItems(orderRows, itemRows){
 
 function mapItem(r){
   return {
-    product: String(pick(r, ['FS Style Name (from Products_new)','productName','product','item','itemName','style','styleName'], 'Item')),
+    product: productName(r),
     color:   String(pick(r, ['variantColor','FS Color Variant (from Products_new)','color','colour','colorway','baseColor','garmentColor'], '')),
     colorHex:String(pick(r, ['colorHex','hex','colourHex','baseHex'], '')),
     size:    String(pick(r, ['variantSize','FS Size Variant (from Products_new)','size','sizeName'], '')),
@@ -642,13 +643,29 @@ function mapItem(r){
   };
 }
 
+/* Some rows have no product link at all (shipping lines, fees) and some
+   carry junk like " - " in Style & Color. Walk the candidates and take the
+   first that contains an actual word. */
+function productName(r){
+  const cands = ['FS Style Name (from Products_new)','productName','product','item','itemName',
+                 'style','styleName','Style & Color','SKU_new','sku'];
+  for(const c of cands){
+    const v = String(pick(r, [c], '')).trim();
+    if(/[a-z0-9]{2}/i.test(v)) return v.replace(/\s*-\s*$/, '').trim();
+  }
+  return 'Item';
+}
+
+/* Size labels that carry no information — never shown as a chip. */
+const EMPTY_SIZE = /^(n\/?\.?a\.?|none|null|n\/a|-{1,2}|—|\.)$/i;
+
 /* "S: 9\nM: 19\nL: 23\nXL: 19\nXXL: 6" → [{label:'S',qty:9}, …]
    Lines without a label:number pair (e.g. "90 totes per design") are ignored. */
 function parseSizeText(txt){
   const out = [];
   String(txt || '').split(/[\n\r;|,]+/).forEach(part => {
     const m = part.match(/^\s*([A-Za-z0-9/\-\s]{1,14}?)\s*[:=]\s*([\d,.]+)\s*$/);
-    if(m) out.push({label: m[1].trim().toUpperCase(), qty: num(m[2])});
+    if(m && !EMPTY_SIZE.test(m[1].trim())) out.push({label: m[1].trim().toUpperCase(), qty: num(m[2])});
   });
   return out;
 }
@@ -703,7 +720,7 @@ function groupByColorway(items){
       });
     }
     const g = map.get(key);
-    if(it.size){
+    if(it.size && !EMPTY_SIZE.test(it.size.trim())){
       g.sizes.set(it.size, (g.sizes.get(it.size) || 0) + it.qty);
     } else if(it.sizeText){
       /* legacy single row: sizes live in one text field */
@@ -801,22 +818,32 @@ function cardView(g){
 
 function orderView(o, i){
   const units = o.groups.reduce((n, g) => n + g.total, 0);
+  const n = o.groups.length;
+  /* Contents summary sits on the collapsed row, so the client can scan
+     order sizes without opening anything. */
+  const summary = n
+    ? `${n} colorway${n === 1 ? '' : 's'} &middot; ${units.toLocaleString()} unit${units === 1 ? '' : 's'}`
+    : 'No items yet';
+  const extra = [
+    o.poNumber ? `<div><span>PO</span>${esc(o.poNumber)}</div>` : '',
+    o.inHands  ? `<div><span>In hands</span>${esc(fmtDate(o.inHands))}</div>` : ''
+  ].filter(Boolean).join('');
+
   return `<section class="order rv" data-i="${i}">
     <button class="order__head" aria-expanded="false">
-      <div class="cell--no"><span class="k">Order</span><div class="order__no">${esc(o.no)}</div></div>
+      <div class="cell--no">
+        <span class="k">Order</span>
+        <div class="order__no">${esc(o.no)}</div>
+        <div class="order__sum">${summary}</div>
+      </div>
       <div class="cell--date"><span class="k">Placed</span><div class="order__date">${esc(fmtDate(o.created)) || '—'}</div></div>
       <div class="cell--addr"><span class="k">Ships to</span><div class="order__addr">${
-        o.shipLines.length ? o.shipLines.map((l, n) => n === 0 ? `<b>${esc(l)}</b>` : esc(l)).join('<br>') : '—'}</div></div>
+        o.shipLines.length ? o.shipLines.map((l, k) => k === 0 ? `<b>${esc(l)}</b>` : esc(l)).join('<br>') : '—'}</div></div>
       <div class="cell--status"><span class="k">Status</span><span class="pill ${pillClass(o.status)}">${esc(o.status)}</span></div>
       <svg class="order__caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
     </button>
     <div class="order__panel"><div class="order__panelIn"><div class="order__body">
-      <div class="body__meta">
-        <div><span>Colorways</span>${o.groups.length}</div>
-        <div><span>Total units</span>${units.toLocaleString()}</div>
-        ${o.poNumber ? `<div><span>PO</span>${esc(o.poNumber)}</div>` : ''}
-        ${o.inHands ? `<div><span>In hands</span>${esc(fmtDate(o.inHands))}</div>` : ''}
-      </div>
+      ${extra ? `<div class="body__meta">${extra}</div>` : '<div style="height:14px"></div>'}
       <div class="cards">${o.groups.map(cardView).join('') || '<p style="color:var(--ink-3);font-size:13px">No line items on this order yet.</p>'}</div>
     </div></div></div>
   </section>`;
