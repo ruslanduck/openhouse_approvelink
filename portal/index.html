@@ -394,15 +394,59 @@ const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-/* tolerant field reader — matches names ignoring case/spaces/underscores */
-function pick(obj, names, dflt=''){
+/* Airtable sends lookups as arrays (["Kasa"]), attachments as [{url}],
+   failed formulas as {state:'error', value:null}. Flatten all of that. */
+function clean(v){
+  if(v === null || v === undefined || v === '') return '';
+  if(Array.isArray(v)){
+    const f = v.map(clean).filter(x => x !== '' && x !== undefined);
+    if(!f.length) return '';
+    return f.length === 1 ? f[0] : f;
+  }
+  if(typeof v === 'object'){
+    if('state' in v && 'value' in v) return v.state === 'error' ? '' : clean(v.value);
+    if(v.url) return v.url;
+    if(v.name) return v.name;
+    if(v.email) return v.email;
+    return '';
+  }
+  return typeof v === 'string' ? v.trim() : v;
+}
+
+/* Airtable attachments carry a full-size url plus thumbnails. Cards are
+   ~92px, so prefer the 512px thumbnail — some originals are 16MB. */
+function imageUrl(v){
+  const first = Array.isArray(v) ? v[0] : v;
+  if(!first) return '';
+  if(typeof first === 'string') return first.trim();
+  const t = first.thumbnails || {};
+  return (t.large && t.large.url) || (t.full && t.full.url) || first.url || '';
+}
+
+/* Structural reader: same tolerant name matching, but returns the value
+   untouched. Use for arrays of records and nested objects. */
+function pickRaw(obj, names, dflt=null){
   if(!obj || typeof obj !== 'object') return dflt;
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
   const map = {};
   for(const k of Object.keys(obj)) map[norm(k)] = obj[k];
   for(const n of [].concat(names)){
     const v = map[norm(n)];
-    if(v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length)) return v;
+    if(v !== undefined && v !== null && v !== '') return v;
+  }
+  return dflt;
+}
+
+/* Scalar reader — matches names ignoring case/spaces/underscores, and
+   flattens Airtable's lookup arrays and wrapper objects via clean(). */
+function pick(obj, names, dflt=''){
+  if(!obj || typeof obj !== 'object') return dflt;
+  const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const map = {};
+  for(const k of Object.keys(obj)) map[norm(k)] = obj[k];
+  for(const n of [].concat(names)){
+    const v = clean(map[norm(n)]);
+    if(v !== '' && v !== undefined && v !== null) return v;
   }
   return dflt;
 }
@@ -474,28 +518,41 @@ function normalise(raw){
   let clientName = '';
   let rows = [];
   let nestedOrders = null;
+  let orderRows = null, itemRows = null;
 
   if(Array.isArray(raw)) rows = raw;
   else if(raw && typeof raw === 'object'){
-    clientName = pick(raw, ['clientName','client','customer','company','name']);
+    clientName = pick(raw, ['clientName','client','customer','company','companyName','name']);
     if(clientName && typeof clientName === 'object') clientName = pick(clientName, ['name','clientName']);
-    const o = pick(raw, ['orders'], null);
-    if(Array.isArray(o) && o.length && (o[0].items || o[0].Items || o[0].lineItems)) nestedOrders = o;
-    else rows = (Array.isArray(o) && o) || pick(raw, ['items','records','lineItems','data','results'], []);
+
+    const o  = pickRaw(raw, ['orders','salesOrders']);
+    const it = pickRaw(raw, ['items','lineItems','salesOrderLineItems']);
+
+    /* Shape A: separate orders + items arrays — what Make sends with two
+       Airtable modules. Joined here, so Airtable needs no extra lookups. */
+    if(Array.isArray(o) && Array.isArray(it)){ orderRows = o; itemRows = it; }
+    else if(Array.isArray(o) && o.length && (o[0].items || o[0].Items || o[0].lineItems)) nestedOrders = o;
+    else rows = (Array.isArray(o) && o) || pickRaw(raw, ['items','records','lineItems','data','results'], []);
   }
-  if(!Array.isArray(rows)) rows = [];
-  rows = rows.map(r => (r && r.fields && typeof r.fields === 'object') ? {...r.fields, id:r.id} : r);
+
+  const unwrap = a => [].concat(a || []).map(r => (r && r.fields && typeof r.fields === 'object') ? {...r.fields, id:r.id} : r);
+  rows = unwrap(Array.isArray(rows) ? rows : []);
 
   let orders;
-  if(nestedOrders){
+  if(orderRows){
+    orderRows = unwrap(orderRows);
+    itemRows  = unwrap(itemRows);
+    orders = joinOrdersAndItems(orderRows, itemRows);
+    if(!clientName) clientName = pick(orderRows[0] || {}, ['companyName','clientName','client','customer','company']);
+  } else if(nestedOrders){
     orders = nestedOrders.map(o => {
-      const items = (pick(o, ['items','lineItems','products'], []) || []).map(mapItem);
+      const items = [].concat(pickRaw(o, ['items','lineItems','products'], []) || []).map(mapItem);
       return buildOrder(o, items);
     });
   } else {
     const byOrder = new Map();
     for(const r of rows){
-      const no = String(pick(r, ['orderNo','order','orderNumber','order #','orderId','Order Number','Name'], '—'));
+      const no = String(orderNoOf(r) || '—');
       if(!byOrder.has(no)) byOrder.set(no, {seed:r, items:[]});
       byOrder.get(no).items.push(mapItem(r));
     }
@@ -503,35 +560,81 @@ function normalise(raw){
   }
 
   orders.sort((a,b) => b.ts - a.ts);
-  if(!clientName) clientName = pick(rows[0] || {}, ['clientName','client','customer','company']) || '';
+  if(!clientName) clientName = pick(rows[0] || {}, ['companyName','clientName','client','customer','company']) || '';
   return {clientName: String(clientName || 'Client'), orders};
+}
+
+const orderNoOf = r => pick(r, ['orderNo','order #','orderNumber','order','orderId','Order Number','Name'], '');
+
+/* Matches each line item to its order by record ID, falling back to order number. */
+function joinOrdersAndItems(orderRows, itemRows){
+  const byId = new Map(), byNo = new Map();
+  const buckets = orderRows.map(o => {
+    const b = {row:o, items:[]};
+    const id = String(pick(o, ['recordId','record ID','id'], ''));
+    const no = String(orderNoOf(o) || '');
+    if(id) byId.set(id, b);
+    if(no) byNo.set(no.toLowerCase(), b);
+    return b;
+  });
+
+  let orphans = 0;
+  for(const it of itemRows){
+    const refs = [].concat(
+      pickRaw(it, ['salesOrder','order_recID','orderRecordId','orderRecId','salesOrderRecordId','parentOrder'], []) || []
+    );
+    let b = null;
+    for(const r of refs) if(byId.has(String(r))){ b = byId.get(String(r)); break; }
+    if(!b){
+      const no = String(pick(it, ['order #','orderNo','orderNumber'], '')).toLowerCase();
+      if(no && byNo.has(no)) b = byNo.get(no);
+    }
+    if(b) b.items.push(mapItem(it)); else orphans++;
+  }
+  window.__portalOrphans = orphans;
+  if(orphans) console.warn('Portal: ' + orphans + ' line item(s) could not be matched to an order.');
+
+  return buckets.map(b => buildOrder(b.row, b.items));
 }
 
 function mapItem(r){
   return {
-    product: String(pick(r, ['product','productName','item','itemName','style','styleName','Product Name'], 'Item')),
-    color:   String(pick(r, ['color','colour','colorway','baseColor','garmentColor','Color'], '')),
+    product: String(pick(r, ['productName','product','item','itemName','style','styleName'], 'Item')),
+    color:   String(pick(r, ['variantColor','color','colour','colorway','baseColor','garmentColor','fsColorVariant'], '')),
     colorHex:String(pick(r, ['colorHex','hex','colourHex','baseHex'], '')),
-    size:    String(pick(r, ['size','sizeName','variantSize','Size'], '')),
-    qty:     num(pick(r, ['qty','quantity','units','count','Qty'], 0)),
-    image:   String(pick(r, ['image','imageUrl','mockup','mockupUrl','photo','productImage','Image'], '')),
-    carrier: String(pick(r, ['carrier','shippingCarrier','Carrier'], '')),
-    tracking:String(pick(r, ['trackNumber','trackingNumber','tracking','tracking #','Track Number'], '')),
+    size:    String(pick(r, ['variantSize','size','sizeName','fsSizeVariant'], '')),
+    qty:     num(pick(r, ['quantity','qty','productionQuantity','units','count'], 0)),
+    /* legacy rows carry all sizes in one text field: "S: 9\nM: 19\nL: 23" */
+    sizeText:String(pick(r, ['sizeBreakdown','sizes','sizeRun'], '')),
+    image:   imageUrl(pickRaw(r, ['productImage','image','imageUrl','mockup','mockupUrl','proofImage','photo'])),
+    carrier: String(pick(r, ['carrier','shippingCarrier'], '')),
+    tracking:String(pick(r, ['trackingNumber','trackNumber','tracking'], '')),
     trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], '')),
-    eta:     String(pick(r, ['customerEtaDisplay','customerETADisplay','eta','ETA','Customer ETA Display'], '')),
-    approvalDate: String(pick(r, ['workApprovalDate','approvalDate','Work Approval Date'], '')),
-    sigReceived:  truthy(pick(r, ['signatureProofReceived','signatureProofRecieved','proofSignatureReceived','Signature Proof Recieved'], '')),
-    unsignedProof:String(pick(r, ['unsignedProof','unsignedProofUrl','unsignedProofDoc','Unsigned Proof'], '')),
-    digitalProof: String(pick(r, ['digitalProof','digitalProofUrl','proofUrl','proofLink','Digital Proof'], '')),
-    proofStatus:  String(pick(r, ['proofStatus','proofState','Proof Status'], '')),
-    proofComment: String(pick(r, ['proofComment','backToWorkNote','changeRequest','proofNote','Back to Work Note'], '')),
-    proofDate:    String(pick(r, ['proofApprovedDate','proofRecievedTime','proofReceivedTime','proofSentDate','Proof Recieved Time'], ''))
+    eta:     String(pick(r, ['customerEtaDisplay','customerETADisplay','eta','customerEta'], '')),
+    approvalDate: String(pick(r, ['workApprovalDate','approvalDate'], '')),
+    sigReceived:  truthy(pick(r, ['proofSignatureReceived','signatureProofReceived','signatureProofRecieved'], '')),
+    unsignedProof:String(pick(r, ['unsignedProof','unsignedProofUrl','unsignedProofDoc'], '')),
+    digitalProof: String(pick(r, ['digitalProof','digitalProofUrl','proofUrl','proofLink','clientProofLink'], '')),
+    proofStatus:  String(pick(r, ['proofStatus','proofState','clientProofStatus'], '')),
+    proofComment: String(pick(r, ['proofComment','backToWorkNote','changeRequest','proofNote','clientProofNote'], '')),
+    proofDate:    String(pick(r, ['proofApprovedDate','proofReceivedModifiedTime','proofRecievedTime','proofReceivedTime','proofSentDate'], ''))
   };
 }
 
+/* "S: 9\nM: 19\nL: 23\nXL: 19\nXXL: 6" → [{label:'S',qty:9}, …]
+   Lines without a label:number pair (e.g. "90 totes per design") are ignored. */
+function parseSizeText(txt){
+  const out = [];
+  String(txt || '').split(/[\n\r;|,]+/).forEach(part => {
+    const m = part.match(/^\s*([A-Za-z0-9/\-\s]{1,14}?)\s*[:=]\s*([\d,.]+)\s*$/);
+    if(m) out.push({label: m[1].trim().toUpperCase(), qty: num(m[2])});
+  });
+  return out;
+}
+
 function buildOrder(o, items){
-  const created = pick(o, ['createdDate','created','date','orderDate','Created Date'], '');
-  const ship = pick(o, ['shipping','shipTo','address','shippingAddress'], null);
+  const created = pick(o, ['created','createdDate','createdShortForm','createdTime','date','orderDate','paidDate'], '');
+  const ship = pickRaw(o, ['shippingAddress','shipping','shipTo','address']);
   const shipLines = Array.isArray(ship) ? ship
     : (typeof ship === 'string' && ship) ? ship.split(/\r?\n/)
     : [
@@ -549,8 +652,11 @@ function buildOrder(o, items){
       : shipLines
     ).map(x => String(x || '').trim()).filter(Boolean);
 
+  let no = String(orderNoOf(o) || '—');
+  if(no !== '—' && !no.startsWith('#')) no = '#' + no;
+
   return {
-    no: String(pick(o, ['orderNo','order','orderNumber','Order Number','Name'], '—')),
+    no,
     created, ts: sortableDate(created),
     status: String(pick(o, ['status','orderStatus','Status'], '')) || (items[0]?.proofStatus || '—'),
     shipLines: lines,
@@ -576,10 +682,16 @@ function groupByColorway(items){
       });
     }
     const g = map.get(key);
-    if(it.size){ g.sizes.set(it.size, (g.sizes.get(it.size) || 0) + it.qty); }
+    if(it.size){
+      g.sizes.set(it.size, (g.sizes.get(it.size) || 0) + it.qty);
+    } else if(it.sizeText){
+      /* legacy single row: sizes live in one text field */
+      for(const s of parseSizeText(it.sizeText))
+        g.sizes.set(s.label, (g.sizes.get(s.label) || 0) + s.qty);
+    }
     g.total += it.qty;
     // first non-empty value wins for shared attributes
-    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate'])
+    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText'])
       if(!g[f] && it[f]) g[f] = it[f];
     if(it.sigReceived) g.sigReceived = true;
   }
