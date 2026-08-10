@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OPENHOUSE — Client Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=PT+Mono&family=Archivo:wght@700;800;900&display=swap" rel="stylesheet">
+
+<!--
+  ─────────────────────────────────────────────────────────────────────────────
+  FONTS
+  Paste the same base64 @font-face block from approval/index.html here
+  (Apfel Grotezk Fett / Inter / Bradford Medium Italic / PT Mono Regular)
+  and the fallbacks below will be replaced automatically by the real faces.
+  ─────────────────────────────────────────────────────────────────────────────
+-->
+
+<style>
+:root{
+  --paper:#F3F1EC;
+  --paper-2:#EAE7E0;
+  --surface:#FFFFFF;
+  --ink:#1A1A17;
+  --ink-2:#57544D;
+  --ink-3:#8C887F;
+  --line:#E4E0D7;
+  --line-2:#F0EDE6;
+
+  --ok-fg:#1F7A4C;   --ok-bg:#E7F2EB;
+  --warn-fg:#8A5B00; --warn-bg:#FAEFDA;
+  --bad-fg:#A33327;  --bad-bg:#F8E7E3;
+  --info-fg:#2B5CA8; --info-bg:#E7EEF9;
+  --idle-fg:#6B6860; --idle-bg:#EFEDE6;
+
+  --r-lg:20px; --r-md:14px; --r-sm:9px;
+  --shadow:0 1px 2px rgba(26,26,23,.04), 0 8px 24px -12px rgba(26,26,23,.14);
+  --shadow-lift:0 2px 4px rgba(26,26,23,.05), 0 18px 40px -18px rgba(26,26,23,.22);
+
+  --display:'Apfel Grotezk Fett','Archivo','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  --mono:'PT Mono','SFMono-Regular',ui-monospace,Menlo,Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--body);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+img{display:block;max-width:100%}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+a{color:inherit}
+
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* ── Sticky bar ─────────────────────────────────────────────── */
+.topbar{
+  position:sticky;top:0;z-index:60;
+  background:rgba(243,241,236,.82);
+  backdrop-filter:saturate(140%) blur(14px);
+  -webkit-backdrop-filter:saturate(140%) blur(14px);
+  border-bottom:1px solid transparent;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.topbar.is-stuck{border-bottom-color:var(--line);box-shadow:0 8px 24px -22px rgba(0,0,0,.5)}
+.topbar__in{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px}
+.topbar__mark{font-family:var(--display);font-weight:900;letter-spacing:-.045em;font-size:19px;line-height:1}
+.topbar__client{font-family:var(--mono);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+
+/* ── Hero ───────────────────────────────────────────────────── */
+.hero{padding:44px 0 8px}
+.hero__mark{
+  font-family:var(--display);font-weight:900;
+  font-size:clamp(52px,13.2vw,178px);
+  line-height:.82;letter-spacing:-.05em;
+  margin:0;
+}
+.hero__rule{display:flex;align-items:baseline;gap:14px;margin-top:22px;padding-top:14px;border-top:1.5px solid var(--ink)}
+.hero__eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.hero__name{font-family:var(--display);font-weight:800;font-size:clamp(20px,3.4vw,30px);letter-spacing:-.02em;margin-left:auto}
+.hero__sub{margin:12px 0 0;max-width:46ch;color:var(--ink-2);font-size:14.5px}
+
+/* ── Summary strip ──────────────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;margin:30px 0 26px}
+.stat{background:var(--surface);padding:15px 16px 14px}
+.stat__n{font-family:var(--display);font-weight:800;font-size:26px;line-height:1;letter-spacing:-.03em}
+.stat__l{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-top:7px}
+.stat--alert .stat__n{color:var(--warn-fg)}
+
+/* ── Controls ───────────────────────────────────────────────── */
+.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  padding:7px 12px;border-radius:999px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink-2);transition:.15s ease;white-space:nowrap;
+}
+.chip:hover{border-color:var(--ink-3)}
+.chip.is-on{background:var(--ink);border-color:var(--ink);color:#fff}
+.search{
+  margin-left:auto;position:relative;
+}
+.search input{
+  font-family:var(--body);font-size:13.5px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:999px;padding:9px 15px 9px 34px;width:230px;outline:none;transition:.15s;
+}
+.search input:focus{border-color:var(--ink);width:270px}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4}
+
+/* ── Order list ─────────────────────────────────────────────── */
+.orders{display:flex;flex-direction:column;gap:10px;padding-bottom:80px}
+
+.order{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow);transition:box-shadow .22s ease, border-color .22s ease;
+  overflow:hidden;
+}
+.order:hover{box-shadow:var(--shadow-lift)}
+.order.is-open{border-color:var(--ink)}
+
+.order__head{
+  display:grid;grid-template-columns:minmax(180px,1.15fr) 130px minmax(180px,1.2fr) auto 34px;
+  align-items:start;gap:20px;width:100%;text-align:left;padding:18px 20px;
+}
+.order__head:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.k{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:5px}
+.order__no{font-family:var(--mono);font-size:13.5px;letter-spacing:-.01em;font-weight:400}
+.order__date{font-size:13.5px;color:var(--ink-2)}
+.order__addr{font-size:13px;line-height:1.45;color:var(--ink-2)}
+.order__addr b{color:var(--ink);font-weight:600}
+.order__caret{align-self:center;justify-self:end;color:var(--ink-3);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.order.is-open .order__caret{transform:rotate(180deg);color:var(--ink)}
+
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  padding:5px 10px;border-radius:999px;white-space:nowrap;
+  background:var(--idle-bg);color:var(--idle-fg);
+}
+.pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.pill--ok{background:var(--ok-bg);color:var(--ok-fg)}
+.pill--warn{background:var(--warn-bg);color:var(--warn-fg)}
+.pill--bad{background:var(--bad-bg);color:var(--bad-fg)}
+.pill--info{background:var(--info-bg);color:var(--info-fg)}
+
+/* accordion body */
+.order__panel{display:grid;grid-template-rows:0fr;transition:grid-template-rows .34s cubic-bezier(.2,.8,.2,1)}
+.order.is-open .order__panel{grid-template-rows:1fr}
+.order__panelIn{overflow:hidden}
+.order__body{padding:4px 20px 22px;border-top:1px solid var(--line-2);margin-top:2px}
+
+.body__meta{display:flex;flex-wrap:wrap;gap:8px 26px;padding:14px 0 18px}
+.body__meta div{font-size:13px;color:var(--ink-2)}
+.body__meta span{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-right:7px}
+
+/* ── Product (colorway) cards ───────────────────────────────── */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px}
+.card{
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.card__top{display:flex;gap:14px;padding:14px}
+.card__media{
+  flex:0 0 92px;height:92px;border-radius:var(--r-sm);background:var(--paper-2);
+  border:1px solid var(--line-2);overflow:hidden;display:grid;place-items:center;
+}
+.card__media img{width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply}
+.card__media .ph{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-3)}
+.card__id{min-width:0;flex:1}
+.card__name{font-family:var(--display);font-weight:800;font-size:16.5px;letter-spacing:-.015em;line-height:1.2;margin:1px 0 7px;word-break:break-word}
+.colorway{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2)}
+.dot{width:13px;height:13px;border-radius:50%;border:1px solid rgba(0,0,0,.18);flex:none}
+.card__qty{margin-top:10px;display:flex;align-items:baseline;gap:6px}
+.card__qty b{font-family:var(--display);font-weight:800;font-size:23px;letter-spacing:-.03em;line-height:1}
+.card__qty i{font-style:normal;font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+
+/* signature: size run */
+.run{padding:0 14px 14px}
+.run__bar{display:flex;height:7px;border-radius:99px;overflow:hidden;background:var(--paper-2);gap:1.5px}
+.run__seg{background:var(--ink);opacity:.86;min-width:3px}
+.run__seg:nth-child(2n){opacity:.66}
+.run__seg:nth-child(3n){opacity:.74}
+.run__list{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.sz{
+  font-family:var(--mono);font-size:11px;letter-spacing:.02em;
+  border:1px solid var(--line);border-radius:6px;padding:3px 7px;color:var(--ink-2);
+  display:inline-flex;gap:6px;align-items:baseline;background:var(--surface);
+}
+.sz b{color:var(--ink);font-weight:400}
+
+/* card meta rows */
+.rows{border-top:1px solid var(--line-2);padding:11px 14px;display:grid;gap:7px}
+.row{display:grid;grid-template-columns:96px 1fr;gap:10px;align-items:baseline;font-size:13px}
+.row>span{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.row a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink-3);word-break:break-all}
+.row a:hover{border-bottom-color:var(--ink)}
+.mono{font-family:var(--mono);font-size:12.5px}
+
+/* proof block */
+.proof{border-top:1px solid var(--line-2);padding:12px 14px;background:#FBFAF7;margin-top:auto}
+.proof__head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.proof__label{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.proof__note{margin-top:9px;font-size:12.5px;color:var(--ink-2);background:var(--surface);
+  border:1px solid var(--line);border-left:2.5px solid var(--bad-fg);border-radius:0 var(--r-sm) var(--r-sm) 0;padding:8px 10px}
+.proof__note em{display:block;font-style:normal;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.proof__actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  padding:8px 13px;border-radius:999px;border:1px solid var(--ink);background:var(--ink);color:#fff;
+  transition:.15s ease;text-decoration:none;
+}
+.btn:hover{opacity:.85}
+.btn--ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn--ghost:hover{border-color:var(--ink);opacity:1}
+.btn svg{flex:none}
+
+/* ── States ─────────────────────────────────────────────────── */
+.state{padding:70px 24px;text-align:center;color:var(--ink-2)}
+.state h3{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:-.02em;margin:0 0 6px;color:var(--ink)}
+.state p{margin:0;font-size:14px}
+.skel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);height:86px;margin-bottom:10px;
+  position:relative;overflow:hidden}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(0,0,0,.045),transparent);animation:sh 1.35s infinite}
+@keyframes sh{100%{transform:translateX(100%)}}
+
+/* ── Proof modal ────────────────────────────────────────────── */
+.modal{position:fixed;inset:0;z-index:100;display:none}
+.modal.is-open{display:block}
+.modal__bg{position:absolute;inset:0;background:rgba(26,26,23,.55);backdrop-filter:blur(3px);animation:fade .2s ease}
+.modal__box{
+  position:absolute;inset:22px;background:var(--surface);border-radius:var(--r-lg);
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 40px 90px -30px rgba(0,0,0,.5);
+  animation:pop .26s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes fade{from{opacity:0}}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.99)}}
+.modal__bar{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);flex:none}
+.modal__title{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modal__bar .btn{padding:6px 11px}
+.modal__bar .spacer{margin-left:auto}
+.modal iframe{flex:1;width:100%;border:0;background:var(--paper)}
+
+/* ── Reveal ─────────────────────────────────────────────────── */
+.rv{opacity:0;transform:translateY(12px)}
+.rv.in{opacity:1;transform:none;transition:opacity .5s ease, transform .5s cubic-bezier(.2,.8,.2,1)}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms !important;transition-duration:.001ms !important}
+  .rv{opacity:1;transform:none}
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width:900px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:760px){
+  .wrap{padding:0 16px}
+  .hero{padding:30px 0 4px}
+  .order__head{grid-template-columns:1fr auto;gap:14px 12px;padding:16px}
+  .order__head .cell--date{grid-column:1}
+  .order__head .cell--addr{grid-column:1 / -1}
+  .order__head .cell--status{grid-column:1}
+  .order__caret{grid-column:2;grid-row:1;align-self:start}
+  .cards{grid-template-columns:1fr}
+  .search{margin-left:0;width:100%}
+  .search input{width:100%}
+  .search input:focus{width:100%}
+  .modal__box{inset:0;border-radius:0}
+  .row{grid-template-columns:82px 1fr}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <div class="wrap topbar__in">
+    <div class="topbar__mark">OPENHOUSE</div>
+    <div class="topbar__client" id="barClient"></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1 class="hero__mark">OPENHOUSE</h1>
+    <div class="hero__rule">
+      <span class="hero__eyebrow">Client Portal</span>
+      <span class="hero__name" id="heroClient">—</span>
+    </div>
+    <p class="hero__sub">Every order you've placed with us, live. Open a row to see each colorway, its size run, tracking, and proof status.</p>
+  </section>
+
+  <section class="stats rv" id="stats" hidden></section>
+
+  <div class="controls rv" id="controls" hidden>
+    <div class="chips" id="chips"></div>
+    <label class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      <input type="search" id="q" placeholder="Search order #, product, address…" aria-label="Search orders">
+    </label>
+  </div>
+
+  <section class="orders" id="orders">
+    <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+  </section>
+</main>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Proof">
+  <div class="modal__bg" data-close></div>
+  <div class="modal__box">
+    <div class="modal__bar">
+      <div class="modal__title" id="modalTitle">Proof</div>
+      <div class="spacer"></div>
+      <a class="btn btn--ghost" id="modalOpen" target="_blank" rel="noopener">Open in new tab</a>
+      <button class="btn btn--ghost" data-close aria-label="Close proof">Close</button>
+    </div>
+    <iframe id="modalFrame" title="Proof" referrerpolicy="no-referrer"></iframe>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   CONFIG
+   ══════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  // Make (Integromat) webhook that returns this client's orders.
+  // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
+  WEBHOOK_URL: 'https://hook.us1.make.com/REPLACE_ME',
+
+  // Fall back to sample data when the webhook isn't reachable yet.
+  // Set to false once Make is wired up.
+  DEMO_FALLBACK: true
+};
+
+/* ══════════════════════════════════════════════════════════════
+   HELPERS
+   ══════════════════════════════════════════════════════════════ */
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* tolerant field reader — matches names ignoring case/spaces/underscores */
+function pick(obj, names, dflt=''){
+  if(!obj || typeof obj !== 'object') return dflt;
+  const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const map = {};
+  for(const k of Object.keys(obj)) map[norm(k)] = obj[k];
+  for(const n of [].concat(names)){
+    const v = map[norm(n)];
+    if(v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && !v.length)) return v;
+  }
+  return dflt;
+}
+const num = v => { const n = parseFloat(String(v ?? '').replace(/[^\d.\-]/g,'')); return isNaN(n) ? 0 : n; };
+const truthy = v => v === true || ['true','yes','1','checked','✓'].includes(String(v ?? '').trim().toLowerCase());
+
+function fmtDate(v){
+  if(!v) return '';
+  const d = new Date(v);
+  if(isNaN(d)) return String(v);
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const mon=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  return `${days[d.getDay()]} ${d.getDate()} ${mon[d.getMonth()]}, ${d.getFullYear()}`;
+}
+const sortableDate = v => { const d = new Date(v); return isNaN(d) ? 0 : d.getTime(); };
+
+/* size ordering */
+const SIZE_RANK = ['osfa','onesize','os','xxs','2xs','xs','s','sm','small','m','md','medium','l','lg','large',
+  'xl','xlarge','2xl','xxl','3xl','xxxl','4xl','xxxxl','5xl','6xl'];
+function sizeRank(s){
+  const k = String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+  const i = SIZE_RANK.indexOf(k);
+  if(i > -1) return i;
+  const n = parseFloat(k);
+  return isNaN(n) ? 500 : 600 + n;
+}
+
+/* status → pill flavour */
+function pillClass(status){
+  const s = String(status).toLowerCase();
+  if(/complete|delivered|shipped|approved|closed/.test(s)) return 'pill--ok';
+  if(/reject|change|declin|hold|issue|cancel/.test(s))     return 'pill--bad';
+  if(/await|pend|proof|review|approval|sent/.test(s))      return 'pill--warn';
+  if(/production|print|progress|process|transit/.test(s))  return 'pill--info';
+  return '';
+}
+
+/* colour name → swatch hex (used when no hex supplied) */
+const NAMED = {black:'#111111',white:'#FFFFFF',navy:'#1B2A4A',red:'#C0342B',royal:'#1E45A0',blue:'#2B5CA8',
+  green:'#2C6B45',forest:'#254A32',grey:'#9A9A96',gray:'#9A9A96',charcoal:'#4A4A48',heather:'#B9B7B1',
+  sand:'#D9CBB2',natural:'#E9E1CE',cream:'#F2EBDC',khaki:'#B7A98A',olive:'#5C5F3D',maroon:'#6D2230',
+  burgundy:'#5C1F2C',orange:'#D2691E',yellow:'#E5B93C',gold:'#C8A045',pink:'#DD8CA5',purple:'#5B3A78',
+  brown:'#6B4A32',tan:'#C9AB86',silver:'#C6C6C2',teal:'#20666B'};
+function swatchHex(color, given){
+  if(given){ const g = String(given).trim(); return g.startsWith('#') ? g : '#'+g; }
+  const words = String(color).toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for(const w of words) if(NAMED[w]) return NAMED[w];
+  return '#D6D2C8';
+}
+
+/* tracking URL from carrier when Make doesn't supply one */
+function trackUrl(carrier, tn, given){
+  if(given) return given;
+  if(!tn) return '';
+  const c = String(carrier).toLowerCase();
+  const t = encodeURIComponent(String(tn).trim());
+  if(c.includes('ups'))   return 'https://www.ups.com/track?tracknum=' + t;
+  if(c.includes('fedex')) return 'https://www.fedex.com/fedextrack/?trknbr=' + t;
+  if(c.includes('usps'))  return 'https://tools.usps.com/go/TrackConfirmAction?tLabels=' + t;
+  if(c.includes('dhl'))   return 'https://www.dhl.com/us-en/home/tracking.html?tracking-id=' + t;
+  return 'https://www.google.com/search?q=' + t;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   NORMALISE — accepts nested {orders:[{items:[]}]} or a flat
+   list of Airtable line-item rows, and folds them into orders.
+   ══════════════════════════════════════════════════════════════ */
+function normalise(raw){
+  let clientName = '';
+  let rows = [];
+  let nestedOrders = null;
+
+  if(Array.isArray(raw)) rows = raw;
+  else if(raw && typeof raw === 'object'){
+    clientName = pick(raw, ['clientName','client','customer','company','name']);
+    if(clientName && typeof clientName === 'object') clientName = pick(clientName, ['name','clientName']);
+    const o = pick(raw, ['orders'], null);
+    if(Array.isArray(o) && o.length && (o[0].items || o[0].Items || o[0].lineItems)) nestedOrders = o;
+    else rows = (Array.isArray(o) && o) || pick(raw, ['items','records','lineItems','data','results'], []);
+  }
+  if(!Array.isArray(rows)) rows = [];
+  rows = rows.map(r => (r && r.fields && typeof r.fields === 'object') ? {...r.fields, id:r.id} : r);
+
+  let orders;
+  if(nestedOrders){
+    orders = nestedOrders.map(o => {
+      const items = (pick(o, ['items','lineItems','products'], []) || []).map(mapItem);
+      return buildOrder(o, items);
+    });
+  } else {
+    const byOrder = new Map();
+    for(const r of rows){
+      const no = String(pick(r, ['orderNo','order','orderNumber','order #','orderId','Order Number','Name'], '—'));
+      if(!byOrder.has(no)) byOrder.set(no, {seed:r, items:[]});
+      byOrder.get(no).items.push(mapItem(r));
+    }
+    orders = [...byOrder.entries()].map(([no, g]) => buildOrder({...g.seed, orderNo:no}, g.items));
+  }
+
+  orders.sort((a,b) => b.ts - a.ts);
+  if(!clientName) clientName = pick(rows[0] || {}, ['clientName','client','customer','company']) || '';
+  return {clientName: String(clientName || 'Client'), orders};
+}
+
+function mapItem(r){
+  return {
+    product: String(pick(r, ['product','productName','item','itemName','style','styleName','Product Name'], 'Item')),
+    color:   String(pick(r, ['color','colour','colorway','baseColor','garmentColor','Color'], '')),
+    colorHex:String(pick(r, ['colorHex','hex','colourHex','baseHex'], '')),
+    size:    String(pick(r, ['size','sizeName','variantSize','Size'], '')),
+    qty:     num(pick(r, ['qty','quantity','units','count','Qty'], 0)),
+    image:   String(pick(r, ['image','imageUrl','mockup','mockupUrl','photo','productImage','Image'], '')),
+    carrier: String(pick(r, ['carrier','shippingCarrier','Carrier'], '')),
+    tracking:String(pick(r, ['trackNumber','trackingNumber','tracking','tracking #','Track Number'], '')),
+    trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], '')),
+    eta:     String(pick(r, ['customerEtaDisplay','customerETADisplay','eta','ETA','Customer ETA Display'], '')),
+    approvalDate: String(pick(r, ['workApprovalDate','approvalDate','Work Approval Date'], '')),
+    sigReceived:  truthy(pick(r, ['signatureProofReceived','signatureProofRecieved','proofSignatureReceived','Signature Proof Recieved'], '')),
+    unsignedProof:String(pick(r, ['unsignedProof','unsignedProofUrl','unsignedProofDoc','Unsigned Proof'], '')),
+    digitalProof: String(pick(r, ['digitalProof','digitalProofUrl','proofUrl','proofLink','Digital Proof'], '')),
+    proofStatus:  String(pick(r, ['proofStatus','proofState','Proof Status'], '')),
+    proofComment: String(pick(r, ['proofComment','backToWorkNote','changeRequest','proofNote','Back to Work Note'], '')),
+    proofDate:    String(pick(r, ['proofApprovedDate','proofRecievedTime','proofReceivedTime','proofSentDate','Proof Recieved Time'], ''))
+  };
+}
+
+function buildOrder(o, items){
+  const created = pick(o, ['createdDate','created','date','orderDate','Created Date'], '');
+  const ship = pick(o, ['shipping','shipTo','address','shippingAddress'], null);
+  const shipLines = Array.isArray(ship) ? ship
+    : (typeof ship === 'string' && ship) ? ship.split(/\r?\n/)
+    : [
+        pick(o, ['shipName','attention','contactName','Ship Name']),
+        pick(o, ['shipCompany','company','Ship Company']),
+        pick(o, ['shipAddress1','address1','street','Ship Address']),
+        [pick(o, ['shipCity','city']), [pick(o,['shipState','state']), pick(o,['shipZip','zip','postal'])].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+        pick(o, ['shipPhone','phone'])
+      ];
+  const shipObj = (ship && !Array.isArray(ship) && typeof ship === 'object') ? ship : null;
+  const lines = (shipObj
+      ? [pick(shipObj,['name','attention']), pick(shipObj,['company']), pick(shipObj,['address1','street','line1']),
+         [pick(shipObj,['city']), [pick(shipObj,['state']), pick(shipObj,['zip','postal'])].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+         pick(shipObj,['phone'])]
+      : shipLines
+    ).map(x => String(x || '').trim()).filter(Boolean);
+
+  return {
+    no: String(pick(o, ['orderNo','order','orderNumber','Order Number','Name'], '—')),
+    created, ts: sortableDate(created),
+    status: String(pick(o, ['status','orderStatus','Status'], '')) || (items[0]?.proofStatus || '—'),
+    shipLines: lines,
+    poNumber: String(pick(o, ['po','poNumber','clientPo'], '')),
+    inHands: String(pick(o, ['inHandsDate','inHands'], '')),
+    groups: groupByColorway(items)
+  };
+}
+
+/* ── the merge: one card per product + colour ───────────────── */
+function groupByColorway(items){
+  const map = new Map();
+  for(const it of items){
+    const key = (it.product + '¦' + it.color).toLowerCase();
+    if(!map.has(key)){
+      map.set(key, {
+        product: it.product, color: it.color, hex: swatchHex(it.color, it.colorHex),
+        image: it.image, sizes: new Map(), total: 0,
+        carrier: it.carrier, tracking: it.tracking, trackingUrl: it.trackingUrl,
+        eta: it.eta, approvalDate: it.approvalDate,
+        sigReceived: it.sigReceived, unsignedProof: it.unsignedProof, digitalProof: it.digitalProof,
+        proofStatus: it.proofStatus, proofComment: it.proofComment, proofDate: it.proofDate
+      });
+    }
+    const g = map.get(key);
+    if(it.size){ g.sizes.set(it.size, (g.sizes.get(it.size) || 0) + it.qty); }
+    g.total += it.qty;
+    // first non-empty value wins for shared attributes
+    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate'])
+      if(!g[f] && it[f]) g[f] = it[f];
+    if(it.sigReceived) g.sigReceived = true;
+  }
+  return [...map.values()].map(g => ({
+    ...g,
+    sizes: [...g.sizes.entries()].sort((a,b) => sizeRank(a[0]) - sizeRank(b[0])).map(([label, qty]) => ({label, qty}))
+  })).sort((a,b) => a.product.localeCompare(b.product) || a.color.localeCompare(b.color));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RENDER
+   ══════════════════════════════════════════════════════════════ */
+let STATE = {orders: [], filter: 'all', query: ''};
+
+function proofView(g){
+  const st = g.proofStatus.trim();
+  const link = g.digitalProof || '';
+  if(!st && !link) return '';
+
+  const s = st.toLowerCase();
+  let cls = 'pill--warn', label = st || 'Proof sent';
+  if(/approv/.test(s)){ cls = 'pill--ok'; label = 'Proof approved'; }
+  else if(/change|reject|declin/.test(s)){ cls = 'pill--bad'; label = 'Changes requested'; }
+  else if(!st){ label = 'Proof available'; }
+
+  const note = (/change|reject|declin/.test(s) && g.proofComment)
+    ? `<div class="proof__note"><em>Your note</em>${esc(g.proofComment)}</div>` : '';
+  const when = g.proofDate ? `<span class="proof__label">${esc(fmtDate(g.proofDate))}</span>` : '';
+
+  const buttons = link ? `
+    <button class="btn" data-proof="${esc(link)}" data-proof-title="${esc(g.product + ' — ' + g.color)}">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      ${/approv/.test(s) ? 'View proof' : 'Open proof'}
+    </button>
+    <a class="btn btn--ghost" href="${esc(link)}" target="_blank" rel="noopener">New tab ↗</a>` : '';
+
+  return `<div class="proof">
+    <div class="proof__head"><span class="pill ${cls}">${esc(label)}</span>${when}</div>
+    ${note}
+    ${buttons ? `<div class="proof__actions">${buttons}</div>` : ''}
+  </div>`;
+}
+
+function documentRow(g){
+  if(!g.sigReceived) return '';
+  const url = g.unsignedProof || g.digitalProof;
+  if(!url) return '';
+  const label = g.unsignedProof ? 'Signed proof' : 'Digital proof';
+  return `<div class="row"><span>Document</span><a href="${esc(url)}" target="_blank" rel="noopener">${label} ↗</a></div>`;
+}
+
+function cardView(g){
+  const max = Math.max(1, ...g.sizes.map(s => s.qty));
+  const bar = g.sizes.length
+    ? `<div class="run__bar" aria-hidden="true">${g.sizes.map(s =>
+        `<div class="run__seg" style="flex:${Math.max(s.qty, max*0.06)}"></div>`).join('')}</div>` : '';
+  const chips = g.sizes.length
+    ? `<div class="run__list">${g.sizes.map(s => `<span class="sz">${esc(s.label)} <b>${s.qty}</b></span>`).join('')}</div>`
+    : '';
+
+  const track = g.tracking
+    ? `<div class="row"><span>Tracking</span><a class="mono" href="${esc(trackUrl(g.carrier, g.tracking, g.trackingUrl))}" target="_blank" rel="noopener">${esc(g.tracking)} ↗</a></div>` : '';
+
+  return `<article class="card">
+    <div class="card__top">
+      <div class="card__media">${g.image
+        ? `<img src="${esc(g.image)}" alt="${esc(g.product + ' ' + g.color)}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph',textContent:'NO IMAGE'}))">`
+        : `<div class="ph">NO IMAGE</div>`}</div>
+      <div class="card__id">
+        <h4 class="card__name">${esc(g.product)}</h4>
+        ${g.color ? `<span class="colorway"><i class="dot" style="background:${esc(g.hex)}"></i>${esc(g.color)}</span>` : ''}
+        <div class="card__qty"><b>${g.total.toLocaleString()}</b><i>pcs</i></div>
+      </div>
+    </div>
+    ${(bar || chips) ? `<div class="run">${bar}${chips}</div>` : ''}
+    <div class="rows">
+      ${g.carrier ? `<div class="row"><span>Carrier</span><div>${esc(g.carrier)}</div></div>` : ''}
+      ${track}
+      ${g.eta ? `<div class="row"><span>ETA</span><div>${esc(g.eta)}</div></div>` : ''}
+      ${g.approvalDate ? `<div class="row"><span>Approved</span><div>${esc(fmtDate(g.approvalDate))}</div></div>` : ''}
+      ${documentRow(g)}
+    </div>
+    ${proofView(g)}
+  </article>`;
+}
+
+function orderView(o, i){
+  const units = o.groups.reduce((n, g) => n + g.total, 0);
+  return `<section class="order rv" data-i="${i}">
+    <button class="order__head" aria-expanded="false">
+      <div class="cell--no"><span class="k">Order</span><div class="order__no">${esc(o.no)}</div></div>
+      <div class="cell--date"><span class="k">Placed</span><div class="order__date">${esc(fmtDate(o.created)) || '—'}</div></div>
+      <div class="cell--addr"><span class="k">Ships to</span><div class="order__addr">${
+        o.shipLines.length ? o.shipLines.map((l, n) => n === 0 ? `<b>${esc(l)}</b>` : esc(l)).join('<br>') : '—'}</div></div>
+      <div class="cell--status"><span class="k">Status</span><span class="pill ${pillClass(o.status)}">${esc(o.status)}</span></div>
+      <svg class="order__caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="order__panel"><div class="order__panelIn"><div class="order__body">
+      <div class="body__meta">
+        <div><span>Colorways</span>${o.groups.length}</div>
+        <div><span>Total units</span>${units.toLocaleString()}</div>
+        ${o.poNumber ? `<div><span>PO</span>${esc(o.poNumber)}</div>` : ''}
+        ${o.inHands ? `<div><span>In hands</span>${esc(fmtDate(o.inHands))}</div>` : ''}
+      </div>
+      <div class="cards">${o.groups.map(cardView).join('') || '<p style="color:var(--ink-3);font-size:13px">No line items on this order yet.</p>'}</div>
+    </div></div></div>
+  </section>`;
+}
+
+function statusBucket(s){
+  const t = String(s).toLowerCase();
+  if(/complete|delivered|closed/.test(t)) return 'complete';
+  if(/proof|approval|await|review/.test(t)) return 'proof';
+  if(/change|reject|declin|hold|issue/.test(t)) return 'attention';
+  return 'active';
+}
+
+function render(){
+  const list = STATE.orders.filter(o => {
+    if(STATE.filter !== 'all' && statusBucket(o.status) !== STATE.filter) return false;
+    if(!STATE.query) return true;
+    const hay = (o.no + ' ' + o.status + ' ' + o.shipLines.join(' ') + ' ' +
+      o.groups.map(g => g.product + ' ' + g.color + ' ' + g.tracking).join(' ')).toLowerCase();
+    return hay.includes(STATE.query);
+  });
+
+  const el = $('#orders');
+  el.innerHTML = list.length
+    ? list.map(orderView).join('')
+    : `<div class="state"><h3>Nothing matches that</h3><p>Clear the search or pick a different status.</p></div>`;
+
+  // stash the filtered list so click handlers resolve the right order
+  el._list = list;
+  reveal();
+}
+
+function reveal(){
+  const io = new IntersectionObserver((ents) => {
+    ents.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, {rootMargin: '0px 0px -40px 0px'});
+  $$('.rv:not(.in)').forEach((n, i) => { n.style.transitionDelay = Math.min(i, 6) * 35 + 'ms'; io.observe(n); });
+}
+
+function renderStats(){
+  const o = STATE.orders;
+  const c = b => o.filter(x => statusBucket(x.status) === b).length;
+  const awaiting = o.filter(x => x.groups.some(g => g.proofStatus && !/approv/i.test(g.proofStatus))).length;
+  $('#stats').innerHTML = [
+    ['Total orders', o.length, ''],
+    ['In progress', c('active') + c('proof'), ''],
+    ['Needs your review', awaiting, awaiting ? 'stat--alert' : ''],
+    ['Completed', c('complete'), '']
+  ].map(([l, n, cls]) => `<div class="stat ${cls}"><div class="stat__n">${n}</div><div class="stat__l">${l}</div></div>`).join('');
+  $('#stats').hidden = false;
+
+  $('#chips').innerHTML = [['all','All'],['proof','Proofs'],['attention','Attention'],['active','In progress'],['complete','Complete']]
+    .map(([k, l]) => `<button class="chip ${k === 'all' ? 'is-on' : ''}" data-f="${k}">${l}</button>`).join('');
+  $('#controls').hidden = false;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   EVENTS
+   ══════════════════════════════════════════════════════════════ */
+document.addEventListener('click', e => {
+  const head = e.target.closest('.order__head');
+  if(head){
+    const card = head.closest('.order');
+    const open = card.classList.toggle('is-open');
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    return;
+  }
+  const proofBtn = e.target.closest('[data-proof]');
+  if(proofBtn){ openProof(proofBtn.dataset.proof, proofBtn.dataset.proofTitle); return; }
+
+  const chip = e.target.closest('.chip');
+  if(chip){
+    $$('.chip').forEach(c => c.classList.toggle('is-on', c === chip));
+    STATE.filter = chip.dataset.f;
+    render();
+    return;
+  }
+  if(e.target.closest('[data-close]')) closeProof();
+});
+
+$('#q').addEventListener('input', e => { STATE.query = e.target.value.trim().toLowerCase(); render(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeProof(); });
+
+function openProof(url, title){
+  $('#modalFrame').src = url;
+  $('#modalOpen').href = url;
+  $('#modalTitle').textContent = title || 'Proof';
+  $('#modal').classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+}
+function closeProof(){
+  $('#modal').classList.remove('is-open');
+  $('#modalFrame').src = 'about:blank';
+  document.body.style.overflow = '';
+}
+
+const bar = $('#topbar');
+addEventListener('scroll', () => bar.classList.toggle('is-stuck', scrollY > 12), {passive: true});
+
+/* ══════════════════════════════════════════════════════════════
+   LOAD
+   ══════════════════════════════════════════════════════════════ */
+async function boot(){
+  const params = new URLSearchParams(location.search);
+  const recordId = params.get('record_id') || params.get('client') || params.get('id') || '';
+
+  let data = null;
+  if(recordId && !CONFIG.WEBHOOK_URL.includes('REPLACE_ME')){
+    try{
+      const sep = CONFIG.WEBHOOK_URL.includes('?') ? '&' : '?';
+      const res = await fetch(CONFIG.WEBHOOK_URL + sep + 'record_id=' + encodeURIComponent(recordId), {cache: 'no-store'});
+      const text = await res.text();
+      try { data = JSON.parse(text); } catch { data = null; }
+    }catch(err){ console.warn('Portal fetch failed:', err); }
+  }
+
+  if(!data){
+    if(CONFIG.DEMO_FALLBACK || params.has('demo')) data = DEMO;
+    else {
+      $('#orders').innerHTML = `<div class="state"><h3>We couldn't load your orders</h3>
+        <p>Check that the link is complete, or email your account manager and we'll resend it.</p></div>`;
+      return;
+    }
+  }
+
+  const {clientName, orders} = normalise(data);
+  STATE.orders = orders;
+  $('#heroClient').textContent = clientName;
+  $('#barClient').textContent = clientName;
+  document.title = clientName + ' — OPENHOUSE Client Portal';
+
+  if(!orders.length){
+    $('#orders').innerHTML = `<div class="state"><h3>No orders yet</h3><p>Once your first order is in the system it'll appear here.</p></div>`;
+    return;
+  }
+  renderStats();
+  render();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DEMO DATA — mirrors the Bubble page so you can eyeball the UI.
+   Delete once the webhook is live.
+   ══════════════════════════════════════════════════════════════ */
+const DEMO = {
+  clientName: 'Kasa',
+  orders: [
+    {
+      orderNo: '#S-260701-MS-NAVYSWATCH-1', createdDate: '2026-07-01', status: 'Awaiting Proof Approval',
+      shipping: {name:'Suzie Hill', company:'Kasa', address1:'2380 Hartsdale Dr', city:'Powell', state:'OH', zip:'43065'},
+      items: [
+        {product:'Heavyweight Tee', color:'Black', size:'S',   qty:24, image:'', carrier:'', eta:'Aug 21, 2026',
+         digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo1', proofStatus:'Proof Sent'},
+        {product:'Heavyweight Tee', color:'Black', size:'M',   qty:48, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo1', proofStatus:'Proof Sent'},
+        {product:'Heavyweight Tee', color:'Black', size:'L',   qty:60, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo1', proofStatus:'Proof Sent'},
+        {product:'Heavyweight Tee', color:'Black', size:'XL',  qty:36, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo1', proofStatus:'Proof Sent'},
+        {product:'Heavyweight Tee', color:'Black', size:'2XL', qty:12, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo1', proofStatus:'Proof Sent'},
+        {product:'Heavyweight Tee', color:'Navy',  size:'S',   qty:12, eta:'Aug 21, 2026',
+         digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo2', proofStatus:'Changes Requested',
+         proofComment:'Logo sits too high on the chest — please drop it about 1.5" and match the navy thread to PMS 289.'},
+        {product:'Heavyweight Tee', color:'Navy',  size:'M',   qty:30, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo2', proofStatus:'Changes Requested'},
+        {product:'Heavyweight Tee', color:'Navy',  size:'L',   qty:30, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo2', proofStatus:'Changes Requested'},
+        {product:'Heavyweight Tee', color:'Navy',  size:'XL',  qty:18, digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo2', proofStatus:'Changes Requested'}
+      ]
+    },
+    {
+      orderNo: '#S-260701-MS-NAVYSWATCH-2', createdDate: '2026-07-01', status: 'In Production',
+      shipping: {name:'STILE Downtown Los Angeles', company:'c/o Drew Millum', address1:'929 South Broadway', city:'Los Angeles', state:'CA', zip:'90015'},
+      items: [
+        {product:'Structured 6-Panel Cap', color:'Sand', size:'OSFA', qty:250, carrier:'UPS', trackNumber:'1Z999AA10123456784',
+         eta:'Aug 9, 2026', workApprovalDate:'2026-07-08', signatureProofReceived:true,
+         digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo3', proofStatus:'Proof Approved', proofApprovedDate:'2026-07-08'}
+      ]
+    },
+    {
+      orderNo: '#S-260622-MS-SWATCH', createdDate: '2026-06-22', status: 'Complete',
+      shipping: {name:'ESA Kasa Inc', company:'Melissa Spoth', address1:'1812 E 6th St', city:'Austin', state:'TX', zip:'78702', phone:'(203) 830-9971'},
+      items: [
+        {product:'Crewneck Sweatshirt', color:'Heather Grey', size:'M', qty:40, carrier:'FedEx', trackNumber:'391234567890',
+         eta:'Delivered Jul 2, 2026', workApprovalDate:'2026-06-24', signatureProofReceived:true,
+         unsignedProof:'https://www.dropbox.com/scl/fi/demo/proof.pdf', proofStatus:'Proof Approved', proofApprovedDate:'2026-06-24'},
+        {product:'Crewneck Sweatshirt', color:'Heather Grey', size:'L', qty:55, carrier:'FedEx', trackNumber:'391234567890'},
+        {product:'Crewneck Sweatshirt', color:'Heather Grey', size:'XL', qty:25, carrier:'FedEx', trackNumber:'391234567890'},
+        {product:'Crewneck Sweatshirt', color:'Maroon', size:'M', qty:20, carrier:'FedEx', trackNumber:'391234567890', eta:'Delivered Jul 2, 2026'},
+        {product:'Crewneck Sweatshirt', color:'Maroon', size:'L', qty:20, carrier:'FedEx', trackNumber:'391234567890'}
+      ]
+    },
+    {
+      orderNo: '#S-260429-MS', createdDate: '2026-04-29', status: 'Complete',
+      shipping: {name:'ESA Kasa Inc', company:'Melissa Spoth', address1:'1812 E 6th St', city:'Austin', state:'TX', zip:'78702', phone:'(203) 830-9971'},
+      items: [
+        {product:'Canvas Tote', color:'Natural', size:'', qty:500, carrier:'USPS', trackNumber:'9400111899223197428490',
+         eta:'Delivered May 12, 2026', workApprovalDate:'2026-05-01', signatureProofReceived:true,
+         unsignedProof:'https://www.dropbox.com/scl/fi/demo/tote-proof.pdf'}
+      ]
+    }
+  ]
+};
+
+boot();
+</script>
+</body>
+</html>
