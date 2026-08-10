@@ -355,7 +355,7 @@ a{color:inherit}
 </main>
 
 <div class="dbg" id="dbg">
-  <div class="dbg__bar">Webhook diagnostics <button onclick="document.getElementById('dbg').classList.remove('is-on')">Hide</button></div>
+  <div class="dbg__bar">Webhook diagnostics <span id="dbgVer" style="color:#E6C87A"></span> <button onclick="document.getElementById('dbg').classList.remove('is-on')">Hide</button></div>
   <div class="dbg__body" id="dbgBody"></div>
 </div>
 
@@ -377,6 +377,9 @@ a{color:inherit}
    CONFIG
    ══════════════════════════════════════════════════════════════ */
 const CONFIG = {
+  /* Bump this on every deploy. Shown in the ?debug panel so you can tell
+     at a glance whether the live domain is serving the newest file. */
+  VERSION: 'p8-join-fix',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -427,10 +430,18 @@ function imageUrl(v){
    untouched. Use for arrays of records and nested objects. */
 function pickRaw(obj, names, dflt=null){
   if(!obj || typeof obj !== 'object') return dflt;
+  const list = [].concat(names);
+  /* Exact key names win. Airtable payloads can carry both "Record ID"
+     (the order) and "record_id" (the webhook's own param) — normalising
+     would collapse them into one and the wrong value could win. */
+  for(const n of list){
+    const v = obj[n];
+    if(v !== undefined && v !== null && v !== '') return v;
+  }
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
   const map = {};
-  for(const k of Object.keys(obj)) map[norm(k)] = obj[k];
-  for(const n of [].concat(names)){
+  for(const k of Object.keys(obj)) if(!(norm(k) in map)) map[norm(k)] = obj[k];
+  for(const n of list){
     const v = map[norm(n)];
     if(v !== undefined && v !== null && v !== '') return v;
   }
@@ -441,10 +452,17 @@ function pickRaw(obj, names, dflt=null){
    flattens Airtable's lookup arrays and wrapper objects via clean(). */
 function pick(obj, names, dflt=''){
   if(!obj || typeof obj !== 'object') return dflt;
+  const list = [].concat(names);
+  for(const n of list){
+    if(n in obj){
+      const v = clean(obj[n]);
+      if(v !== '' && v !== undefined && v !== null) return v;
+    }
+  }
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
   const map = {};
-  for(const k of Object.keys(obj)) map[norm(k)] = obj[k];
-  for(const n of [].concat(names)){
+  for(const k of Object.keys(obj)) if(!(norm(k) in map)) map[norm(k)] = obj[k];
+  for(const n of list){
     const v = clean(map[norm(n)]);
     if(v !== '' && v !== undefined && v !== null) return v;
   }
@@ -571,9 +589,12 @@ function joinOrdersAndItems(orderRows, itemRows){
   const byId = new Map(), byNo = new Map();
   const buckets = orderRows.map(o => {
     const b = {row:o, items:[]};
-    const id = String(pick(o, ['recordId','record ID','id'], ''));
+    /* register every id the order might be referenced by */
+    for(const k of ['Record ID','recordID','recordId','id']){
+      const v = clean(pickRaw(o, [k], ''));
+      if(v && String(v).startsWith('rec')) byId.set(String(v), b);
+    }
     const no = String(orderNoOf(o) || '');
-    if(id) byId.set(id, b);
     if(no) byNo.set(no.toLowerCase(), b);
     return b;
   });
@@ -581,12 +602,12 @@ function joinOrdersAndItems(orderRows, itemRows){
   let orphans = 0;
   for(const it of itemRows){
     const refs = [].concat(
-      pickRaw(it, ['salesOrder','order_recID','orderRecordId','orderRecId','salesOrderRecordId','parentOrder'], []) || []
+      pickRaw(it, ['order_recID','orderRecordId','orderRecId','salesOrderRecordId','parentOrder','Order #','salesOrder'], []) || []
     );
     let b = null;
     for(const r of refs) if(byId.has(String(r))){ b = byId.get(String(r)); break; }
     if(!b){
-      const no = String(pick(it, ['order #','orderNo','orderNumber'], '')).toLowerCase();
+      const no = String(pick(it, ['Order # f','orderNoText','orderNo','orderNumber'], '')).toLowerCase();
       if(no && byNo.has(no)) b = byNo.get(no);
     }
     if(b) b.items.push(mapItem(it)); else orphans++;
@@ -599,10 +620,10 @@ function joinOrdersAndItems(orderRows, itemRows){
 
 function mapItem(r){
   return {
-    product: String(pick(r, ['productName','product','item','itemName','style','styleName'], 'Item')),
-    color:   String(pick(r, ['variantColor','color','colour','colorway','baseColor','garmentColor','fsColorVariant'], '')),
+    product: String(pick(r, ['FS Style Name (from Products_new)','productName','product','item','itemName','style','styleName'], 'Item')),
+    color:   String(pick(r, ['variantColor','FS Color Variant (from Products_new)','color','colour','colorway','baseColor','garmentColor'], '')),
     colorHex:String(pick(r, ['colorHex','hex','colourHex','baseHex'], '')),
-    size:    String(pick(r, ['variantSize','size','sizeName','fsSizeVariant'], '')),
+    size:    String(pick(r, ['variantSize','FS Size Variant (from Products_new)','size','sizeName'], '')),
     qty:     num(pick(r, ['quantity','qty','productionQuantity','units','count'], 0)),
     /* legacy rows carry all sizes in one text field: "S: 9\nM: 19\nL: 23" */
     sizeText:String(pick(r, ['sizeBreakdown','sizes','sizeRun'], '')),
@@ -974,6 +995,8 @@ function showDebug(d, parsed){
   const out = [];
   out.push(`<h4>Request</h4>record_id: ${esc(d.recordId) || '(none)'}\n${esc(d.url) || '(not called)'}`);
   out.push(`<h4>Response</h4>HTTP: ${esc(d.http) || '—'}\nData source used: <span class="${d.source === 'webhook' ? 'good' : 'bad'}">${d.source}</span>`);
+  if(window.__portalOrphans)
+    out.push(`<h4>Unmatched line items</h4><span class="bad">${window.__portalOrphans} line item(s) had no matching order — check that the orders array carries "Record ID" and the items carry "order_recID".</span>`);
   if(d.err) out.push(`<h4>Problem</h4><span class="bad">${esc(d.err)}</span>`);
 
   if(first && typeof first === 'object'){
@@ -987,6 +1010,7 @@ function showDebug(d, parsed){
   }
   out.push(`<h4>Raw response (first 4000 chars)</h4>${esc(d.raw).slice(0, 4000) || '(empty)'}`);
 
+  $('#dbgVer').textContent = '· build ' + CONFIG.VERSION;
   $('#dbgBody').innerHTML = out.join('\n\n');
   $('#dbg').classList.add('is-on');
 }
