@@ -254,6 +254,37 @@ a{color:inherit}
 .modal__bar .spacer{margin-left:auto}
 .modal iframe{flex:1;width:100%;border:0;background:var(--paper)}
 
+/* ── Sample-data banner ─────────────────────────────────────── */
+.notice{
+  display:none;align-items:flex-start;gap:11px;
+  background:var(--warn-bg);color:var(--warn-fg);
+  border:1px solid rgba(138,91,0,.22);border-radius:var(--r-md);
+  padding:12px 14px;margin:0 0 18px;font-size:13px;line-height:1.45;
+}
+.notice.is-on{display:flex}
+.notice b{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;margin-bottom:3px}
+.notice svg{flex:none;margin-top:1px}
+
+/* ── Debug panel (?debug) ───────────────────────────────────── */
+.dbg{
+  display:none;position:fixed;left:0;right:0;bottom:0;z-index:90;max-height:46vh;
+  background:#16160F;color:#DFDCD2;border-top:2px solid var(--ink);
+  font-family:var(--mono);font-size:11.5px;line-height:1.55;overflow:auto;
+}
+.dbg.is-on{display:block}
+.dbg__bar{position:sticky;top:0;display:flex;gap:10px;align-items:center;
+  padding:9px 14px;background:#16160F;border-bottom:1px solid #33322A;color:#9C998F;
+  font-size:10px;letter-spacing:.09em;text-transform:uppercase}
+.dbg__bar button{margin-left:auto;color:#DFDCD2;border:1px solid #44433A;border-radius:6px;
+  padding:4px 9px;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase}
+.dbg__body{padding:12px 14px 20px;white-space:pre-wrap;word-break:break-word}
+.dbg h4{margin:14px 0 5px;color:#E6C87A;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.09em;text-transform:uppercase;font-weight:400}
+.dbg h4:first-child{margin-top:0}
+.dbg .bad{color:#F0907F}
+.dbg .good{color:#93D3A2}
+
 /* ── Reveal ─────────────────────────────────────────────────── */
 .rv{opacity:0;transform:translateY(12px)}
 .rv.in{opacity:1;transform:none;transition:opacity .5s ease, transform .5s cubic-bezier(.2,.8,.2,1)}
@@ -303,6 +334,11 @@ a{color:inherit}
     <p class="hero__sub">Every order you've placed with us, live. Open a row to see each colorway, its size run, tracking, and proof status.</p>
   </section>
 
+  <div class="notice" id="notice">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg>
+    <div><b>Sample data</b><span id="noticeText"></span></div>
+  </div>
+
   <section class="stats rv" id="stats" hidden></section>
 
   <div class="controls rv" id="controls" hidden>
@@ -317,6 +353,11 @@ a{color:inherit}
     <div class="skel"></div><div class="skel"></div><div class="skel"></div>
   </section>
 </main>
+
+<div class="dbg" id="dbg">
+  <div class="dbg__bar">Webhook diagnostics <button onclick="document.getElementById('dbg').classList.remove('is-on')">Hide</button></div>
+  <div class="dbg__body" id="dbgBody"></div>
+</div>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Proof">
   <div class="modal__bg" data-close></div>
@@ -336,12 +377,13 @@ a{color:inherit}
    CONFIG
    ══════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  // Make (Integromat) webhook that returns this client's orders.
+  // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
-  WEBHOOK_URL: 'https://hook.us1.make.com/REPLACE_ME',
+  WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
 
   // Fall back to sample data when the webhook isn't reachable yet.
-  // Set to false once Make is wired up.
+  // While true, a yellow banner appears whenever sample data is shown,
+  // so you always know which source you're looking at. Set to false for launch.
   DEMO_FALLBACK: true
 };
 
@@ -745,24 +787,47 @@ addEventListener('scroll', () => bar.classList.toggle('is-stuck', scrollY > 12),
    LOAD
    ══════════════════════════════════════════════════════════════ */
 async function boot(){
-  const params = new URLSearchParams(location.search);
+  const params  = new URLSearchParams(location.search);
   const recordId = params.get('record_id') || params.get('client') || params.get('id') || '';
+  const DEBUG   = params.has('debug');
+  const diag    = {recordId, url:'', http:'', raw:'', err:'', source:''};
 
   let data = null;
-  if(recordId && !CONFIG.WEBHOOK_URL.includes('REPLACE_ME')){
+  if(!recordId){
+    diag.err = 'No record_id in the page URL.';
+  } else if(CONFIG.WEBHOOK_URL.includes('REPLACE_ME')){
+    diag.err = 'CONFIG.WEBHOOK_URL is not set.';
+  } else {
+    const sep = CONFIG.WEBHOOK_URL.includes('?') ? '&' : '?';
+    diag.url = CONFIG.WEBHOOK_URL + sep + 'record_id=' + encodeURIComponent(recordId);
     try{
-      const sep = CONFIG.WEBHOOK_URL.includes('?') ? '&' : '?';
-      const res = await fetch(CONFIG.WEBHOOK_URL + sep + 'record_id=' + encodeURIComponent(recordId), {cache: 'no-store'});
+      const res  = await fetch(diag.url, {cache:'no-store'});
       const text = await res.text();
-      try { data = JSON.parse(text); } catch { data = null; }
-    }catch(err){ console.warn('Portal fetch failed:', err); }
+      diag.http = res.status + ' ' + res.statusText;
+      diag.raw  = text;
+      if(!res.ok){ diag.err = 'Webhook returned HTTP ' + res.status + '.'; }
+      else{
+        try { data = JSON.parse(text); }
+        catch(e){ diag.err = 'Response is not valid JSON: ' + e.message; }
+      }
+    }catch(err){
+      diag.err = 'Request blocked or failed: ' + err.message +
+        ' — usually a missing Access-Control-Allow-Origin header on the Make webhook response.';
+    }
   }
 
+  diag.source = data ? 'webhook' : 'sample';
   if(!data){
-    if(CONFIG.DEMO_FALLBACK || params.has('demo')) data = DEMO;
-    else {
+    if(CONFIG.DEMO_FALLBACK || params.has('demo')){
+      data = DEMO;
+      $('#noticeText').textContent = diag.err
+        ? diag.err + ' Showing sample data instead.'
+        : 'Showing sample data. Live orders will appear once the webhook returns data.';
+      $('#notice').classList.add('is-on');
+    } else {
       $('#orders').innerHTML = `<div class="state"><h3>We couldn't load your orders</h3>
         <p>Check that the link is complete, or email your account manager and we'll resend it.</p></div>`;
+      if(DEBUG) showDebug(diag, null);
       return;
     }
   }
@@ -779,6 +844,39 @@ async function boot(){
   }
   renderStats();
   render();
+  if(DEBUG) showDebug(diag, {clientName, orders});
+}
+
+/* Shows exactly what the webhook returned and how it was understood.
+   Add ?debug to the URL. Safe to leave in — invisible without the flag. */
+function showDebug(d, parsed){
+  const first = (() => {
+    try{
+      const j = JSON.parse(d.raw);
+      const arr = Array.isArray(j) ? j : (j.records || j.items || j.orders || j.data || []);
+      const r = arr[0];
+      return (r && r.fields) ? r.fields : r;
+    }catch{ return null; }
+  })();
+
+  const out = [];
+  out.push(`<h4>Request</h4>record_id: ${esc(d.recordId) || '(none)'}\n${esc(d.url) || '(not called)'}`);
+  out.push(`<h4>Response</h4>HTTP: ${esc(d.http) || '—'}\nData source used: <span class="${d.source === 'webhook' ? 'good' : 'bad'}">${d.source}</span>`);
+  if(d.err) out.push(`<h4>Problem</h4><span class="bad">${esc(d.err)}</span>`);
+
+  if(first && typeof first === 'object'){
+    out.push(`<h4>Field names in the first record</h4>` +
+      Object.keys(first).map(k => '• ' + esc(k) + ' = ' + esc(JSON.stringify(first[k])).slice(0, 90)).join('\n'));
+  }
+  if(parsed){
+    out.push(`<h4>Understood as</h4>client: ${esc(parsed.clientName)}\norders: ${parsed.orders.length}\n` +
+      parsed.orders.map(o => `  ${esc(o.no)} — ${o.groups.length} colorway(s), ` +
+        o.groups.map(g => `${esc(g.product)}/${esc(g.color) || '(no color)'} ${g.total}pcs [${g.sizes.map(s => s.label + ':' + s.qty).join(' ') || 'no sizes'}]`).join(' | ')).join('\n'));
+  }
+  out.push(`<h4>Raw response (first 4000 chars)</h4>${esc(d.raw).slice(0, 4000) || '(empty)'}`);
+
+  $('#dbgBody').innerHTML = out.join('\n\n');
+  $('#dbg').classList.add('is-on');
 }
 
 /* ══════════════════════════════════════════════════════════════
