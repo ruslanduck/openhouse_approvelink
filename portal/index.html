@@ -397,7 +397,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p20-hero-strapline',
+  VERSION: 'p21-item-status',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -522,6 +522,7 @@ function pillClass(status){
   const s = String(status).toLowerCase();
   if(/complete|delivered|shipped|approved|closed/.test(s)) return 'pill--ok';
   if(/reject|change|declin|hold|issue|cancel/.test(s))     return 'pill--bad';
+  if(/requires art|client art|awaiting art|need.*artwork/.test(s)) return 'pill--warn';
   if(/await|pend|proof|review|approval|sent/.test(s))      return 'pill--warn';
   if(/pack|pick|label|fulfil/.test(s))                     return 'pill--info';
   if(/production|print|progress|process|transit/.test(s))  return 'pill--info';
@@ -838,7 +839,7 @@ function groupByColorway(items){
         product: it.product, color: it.color, hex: swatchHex(it.color, it.colorHex),
         image: it.image, sizes: new Map(), total: 0,
         carrier: it.carrier, tracking: it.tracking, trackingUrl: it.trackingUrl,
-        eta: it.eta, approvalDate: it.approvalDate,
+        eta: it.eta, approvalDate: it.approvalDate, clientStatus: it.clientStatus,
         sigReceived: it.sigReceived, unsignedProof: it.unsignedProof, digitalProof: it.digitalProof,
         proofStatus: it.proofStatus, proofComment: it.proofComment, proofDate: it.proofDate
       });
@@ -853,7 +854,7 @@ function groupByColorway(items){
     }
     g.total += it.qty;
     // first non-empty value wins for shared attributes
-    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText'])
+    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus'])
       if(!g[f] && it[f]) g[f] = it[f];
     if(it.sigReceived) g.sigReceived = true;
   }
@@ -938,7 +939,17 @@ function documentRow(g){
   return `<div class="row"><span>Document</span><a href="${esc(url)}" target="_blank" rel="noopener">${label} ${EXT}</a></div>`;
 }
 
-function cardView(g){
+/* A product can sit at a different stage than its order — e.g. one item
+   still waiting on the client's artwork while the rest await proof sign-off.
+   Showing nothing there reads as "forgotten", so surface the item's own
+   status whenever it differs from the order's. */
+function itemStatusRow(g, orderStatus){
+  const s = (g.clientStatus || '').trim();
+  if(!s || s.toLowerCase() === String(orderStatus || '').trim().toLowerCase()) return '';
+  return `<div class="row"><span>Status</span><div><span class="pill ${pillClass(s)}">${esc(s)}</span></div></div>`;
+}
+
+function cardView(g, orderStatus){
   const max = Math.max(1, ...g.sizes.map(s => s.qty));
   const bar = g.sizes.length
     ? `<div class="run__bar" aria-hidden="true">${g.sizes.map(s =>
@@ -967,6 +978,7 @@ function cardView(g){
       ${track}
       ${g.eta ? `<div class="row"><span>ETA</span><div>${esc(g.eta)}</div></div>` : ''}
       ${g.approvalDate ? `<div class="row"><span>Approved</span><div>${esc(fmtDate(g.approvalDate))}</div></div>` : ''}
+      ${itemStatusRow(g, orderStatus)}
       ${documentRow(g)}
     </div>
     ${proofView(g)}
@@ -1002,7 +1014,7 @@ function orderView(o, i){
     <div class="order__panel"><div class="order__panelIn"><div class="order__body">
       ${extra ? `<div class="body__meta">${extra}</div>` : '<div style="height:14px"></div>'}
       ${orderProofsView(o)}
-      <div class="cards">${o.groups.map(cardView).join('') || '<p style="color:var(--ink-3);font-size:13px">No line items on this order yet.</p>'}</div>
+      <div class="cards">${o.groups.map(g => cardView(g, o.status)).join('') || '<p style="color:var(--ink-3);font-size:13px">No line items on this order yet.</p>'}</div>
     </div></div></div>
   </section>`;
 }
