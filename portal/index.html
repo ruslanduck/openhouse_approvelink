@@ -110,6 +110,8 @@ a{color:inherit}
 }
 .chip:hover{border-color:var(--ink-3)}
 .chip.is-on{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip i{font-style:normal;margin-left:6px;opacity:.5;font-size:10px}
+.chip.is-on i{opacity:.75}
 .search{
   margin-left:auto;position:relative;
 }
@@ -390,7 +392,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p16-hero-and-arrow',
+  VERSION: 'p18-status-fallback',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -516,6 +518,7 @@ function pillClass(status){
   if(/complete|delivered|shipped|approved|closed/.test(s)) return 'pill--ok';
   if(/reject|change|declin|hold|issue|cancel/.test(s))     return 'pill--bad';
   if(/await|pend|proof|review|approval|sent/.test(s))      return 'pill--warn';
+  if(/pack|pick|label|fulfil/.test(s))                     return 'pill--info';
   if(/production|print|progress|process|transit/.test(s))  return 'pill--info';
   return '';
 }
@@ -681,6 +684,7 @@ function mapItem(r){
     tracking:String(pick(r, ['trackingNumber','trackNumber','tracking'], '')),
     trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], '')),
     eta:     String(pick(r, ['customerEtaDisplay','customerETADisplay','eta','customerEta'], '')),
+    clientStatus: String(pick(r, ['client_status','clientStatus'], '')),
     approvalDate: String(pick(r, ['workApprovalDate','approvalDate'], '')),
     sigReceived:  truthy(pick(r, ['proofSignatureReceived','signatureProofReceived','signatureProofRecieved'], '')),
     unsignedProof:String(pick(r, ['unsignedProof','unsignedProofUrl','unsignedProofDoc'], '')),
@@ -751,6 +755,17 @@ function parseSizeText(txt){
   return out;
 }
 
+/* Most common client_status across the order's line items. */
+function itemStatus(items){
+  const tally = new Map();
+  for(const it of items){
+    const v = (it.clientStatus || '').trim();
+    if(v) tally.set(v, (tally.get(v) || 0) + 1);
+  }
+  if(!tally.size) return '';
+  return [...tally.entries()].sort((a,b) => b[1] - a[1])[0][0];
+}
+
 function buildOrder(o, items, proofs){
   const created = pick(o, ['created','createdDate','createdShortForm','createdTime','date','orderDate','paidDate'], '');
   const ship = pickRaw(o, ['shippingAddress','shipping','shipTo','address']);
@@ -774,14 +789,22 @@ function buildOrder(o, items, proofs){
   let no = String(orderNoOf(o) || '—');
   if(no !== '—' && !no.startsWith('#')) no = '#' + no;
 
+  const built = attachProofs(groupByColorway(items), proofs || []);
+  /* every proof on this order that the client will actually see */
+  const shown = built.proofs.concat(...built.groups.map(g => g.proofs || []))
+                            .filter(p => proofState(p));
+
   return {
     no,
     created, ts: sortableDate(created),
-    status: String(pick(o, ['status','orderStatus','Status'], '')) || (items[0]?.proofStatus || '—'),
+    status: String(pick(o, ['status','orderStatus','Status'], '')) || itemStatus(items) || '—',
     shipLines: lines,
     poNumber: String(pick(o, ['po','poNumber','clientPo'], '')),
     inHands: String(pick(o, ['inHandsDate','inHands'], '')),
-    ...attachProofs(groupByColorway(items), proofs || [])
+    ...built,
+    proofCount: shown.length,
+    needsReview: shown.some(p => { const st = proofState(p); return st && st.cls === 'pill--warn'; }),
+    hasIssue: shown.some(p => { const st = proofState(p); return st && st.cls === 'pill--bad'; })
   };
 }
 
@@ -987,9 +1010,18 @@ function statusBucket(s){
   return 'active';
 }
 
+/* "Proofs" means the order has something to show; "Attention" means it
+   wants the client to act. Both are about proofs, not the order status. */
+function matchesFilter(o, f){
+  if(f === 'all')       return true;
+  if(f === 'proof')     return o.proofCount > 0;
+  if(f === 'attention') return o.needsReview || o.hasIssue || statusBucket(o.status) === 'attention';
+  return statusBucket(o.status) === f;
+}
+
 function render(){
   const list = STATE.orders.filter(o => {
-    if(STATE.filter !== 'all' && statusBucket(o.status) !== STATE.filter) return false;
+    if(!matchesFilter(o, STATE.filter)) return false;
     if(!STATE.query) return true;
     const hay = (o.no + ' ' + o.status + ' ' + o.shipLines.join(' ') + ' ' +
       o.groups.map(g => g.product + ' ' + g.color + ' ' + g.tracking).join(' ')).toLowerCase();
@@ -1016,17 +1048,23 @@ function reveal(){
 function renderStats(){
   const o = STATE.orders;
   const c = b => o.filter(x => statusBucket(x.status) === b).length;
-  const awaiting = o.filter(x => x.groups.some(g => g.proofStatus && !/approv/i.test(g.proofStatus))).length;
+  const review = o.filter(x => x.needsReview).length;
   $('#stats').innerHTML = [
     ['Total orders', o.length, ''],
     ['In progress', c('active') + c('proof'), ''],
-    ['Needs your review', awaiting, awaiting ? 'stat--alert' : ''],
+    ['Needs your review', review, review ? 'stat--alert' : ''],
     ['Completed', c('complete'), '']
   ].map(([l, n, cls]) => `<div class="stat ${cls}"><div class="stat__n">${n}</div><div class="stat__l">${l}</div></div>`).join('');
   $('#stats').hidden = false;
 
+  /* A filter that can only return an empty screen is worse than no filter,
+     so each chip shows its count and zero-count chips aren't rendered. */
   $('#chips').innerHTML = [['all','All'],['proof','Proofs'],['attention','Attention'],['active','In progress'],['complete','Complete']]
-    .map(([k, l]) => `<button class="chip ${k === 'all' ? 'is-on' : ''}" data-f="${k}">${l}</button>`).join('');
+    .map(([k, l]) => {
+      const n = STATE.orders.filter(x => matchesFilter(x, k)).length;
+      if(!n && k !== 'all') return '';
+      return `<button class="chip ${k === STATE.filter ? 'is-on' : ''}" data-f="${k}">${l}<i>${n}</i></button>`;
+    }).join('');
   $('#controls').hidden = false;
 }
 
@@ -1148,6 +1186,14 @@ function showDebug(d, parsed){
   const out = [];
   out.push(`<h4>Request</h4>record_id: ${esc(d.recordId) || '(none)'}\n${esc(d.url) || '(not called)'}`);
   out.push(`<h4>Response</h4>HTTP: ${esc(d.http) || '—'}\nData source used: <span class="${d.source === 'webhook' ? 'good' : 'bad'}">${d.source}</span>`);
+  if(parsed){
+    const total = parsed.orders.reduce((n, o) => n + o.proofCount, 0);
+    const raw = (() => { try{ const j = JSON.parse(d.raw); return (j.proofs || j.designRequests || []).length; }catch{ return 0; } })();
+    out.push(`<h4>Proofs</h4>received in payload: <span class="${raw ? 'good' : 'bad'}">${raw}</span>` +
+      `\nmatched to an order: ${total}` +
+      (window.__portalProofOrphans ? `\n<span class="bad">unmatched: ${window.__portalProofOrphans} — check OrderID on the Design Request</span>` : '') +
+      (raw === 0 ? `\n<span class="bad">No "proofs" array in the response. Add the Design Requests search + aggregator in Make, then include "proofs": [{{17.array}}] in the webhook response body.</span>` : ''));
+  }
   if(window.__portalOrphans)
     out.push(`<h4>Unmatched line items</h4><span class="bad">${window.__portalOrphans} line item(s) had no matching order — check that the orders array carries "Record ID" and the items carry "order_recID".</span>`);
   if(d.err) out.push(`<h4>Problem</h4><span class="bad">${esc(d.err)}</span>`);
