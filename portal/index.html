@@ -76,33 +76,21 @@ a{color:inherit}
 
 .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
 
-/* ── Sticky bar ─────────────────────────────────────────────── */
-.topbar{
-  position:sticky;top:0;z-index:60;
-  background:rgba(243,241,236,.82);
-  backdrop-filter:saturate(140%) blur(14px);
-  -webkit-backdrop-filter:saturate(140%) blur(14px);
-  border-bottom:1px solid transparent;
-  transition:border-color .2s ease, box-shadow .2s ease;
-}
-.topbar.is-stuck{border-bottom-color:var(--line);box-shadow:0 8px 24px -22px rgba(0,0,0,.5)}
-.topbar__in{display:flex;align-items:center;justify-content:space-between;gap:16px;height:60px}
-.topbar__mark{font-family:var(--display);font-weight:400;letter-spacing:-.045em;font-size:19px;line-height:1}
-.topbar__client{font-family:var(--mono);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
-
 /* ── Hero ───────────────────────────────────────────────────── */
-.hero{padding:44px 0 8px}
+.hero{padding:34px 0 6px;text-align:center}
 .hero__mark{
   font-family:var(--display);font-weight:400;
-  font-size:clamp(52px,13.2vw,178px);
-  line-height:.82;letter-spacing:-.05em;
+  font-size:clamp(40px,16.5vw,205px);
+  line-height:.86;letter-spacing:-.05em;
   margin:0;
 }
-.hero__rule{display:flex;align-items:baseline;gap:14px;margin-top:22px;padding-top:14px;border-top:1.5px solid var(--ink)}
-.hero__eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-.hero__name{font-family:var(--display);font-weight:400;font-size:clamp(20px,3.4vw,30px);letter-spacing:-.02em;margin-left:auto}
-.hero__sub{margin:14px 0 0;max-width:44ch;color:var(--ink-2);font-family:var(--editorial);
-  font-size:17px;line-height:1.45;letter-spacing:.005em}
+.hero__rule{height:1.5px;background:var(--ink);margin:22px 0 15px}
+.hero__eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+.hero__name{font-family:var(--display);font-weight:400;font-size:clamp(19px,4.6vw,29px);letter-spacing:-.02em;margin-top:7px}
+.hero__sub{
+  margin:15px auto 0;max-width:56ch;color:var(--ink-2);
+  font-family:var(--mono);font-size:12.5px;line-height:1.7;letter-spacing:.015em;
+}
 
 /* ── Summary strip ──────────────────────────────────────────── */
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
@@ -222,6 +210,8 @@ a{color:inherit}
 .row a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--ink-3);word-break:break-all}
 .row a:hover{border-bottom-color:var(--ink)}
 .mono{font-family:var(--mono);font-size:12.5px}
+.ext{display:inline-block;vertical-align:-1px;margin-left:2px;opacity:.6}
+a:hover .ext{opacity:1}
 
 /* proof block */
 .proof{border-top:1px solid var(--line-2);padding:12px 14px;background:#FBFAF7;margin-top:auto}
@@ -327,7 +317,9 @@ a{color:inherit}
 }
 @media (max-width:760px){
   .wrap{padding:0 16px}
-  .hero{padding:30px 0 4px}
+  .hero{padding:22px 0 4px}
+  .hero__rule{margin:16px 0 13px}
+  .hero__sub{font-size:12px;line-height:1.65;max-width:none}
   .order__head{grid-template-columns:1fr auto;gap:14px 12px;padding:16px}
   .order__head .cell--date{grid-column:1}
   .order__head .cell--addr{grid-column:1 / -1}
@@ -344,21 +336,13 @@ a{color:inherit}
 </head>
 <body>
 
-<header class="topbar" id="topbar">
-  <div class="wrap topbar__in">
-    <div class="topbar__mark">OPENHOUSE</div>
-    <div class="topbar__client" id="barClient"></div>
-  </div>
-</header>
-
 <main class="wrap">
   <section class="hero">
     <h1 class="hero__mark">OPENHOUSE</h1>
-    <div class="hero__rule">
-      <span class="hero__eyebrow">Client Portal</span>
-      <span class="hero__name" id="heroClient">—</span>
-    </div>
-    <p class="hero__sub">Every order you've placed with us, live. Open a row to see each colorway, its size run, tracking, and proof status.</p>
+    <div class="hero__rule"></div>
+    <div class="hero__eyebrow">Client Portal</div>
+    <div class="hero__name" id="heroClient">&mdash;</div>
+    <p class="hero__sub">Every order you&rsquo;ve placed with us, live. Open a row to see each colorway, its size run, tracking, and proof status.</p>
   </section>
 
   <div class="notice" id="notice">
@@ -406,7 +390,7 @@ a{color:inherit}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p13-brand-fonts',
+  VERSION: 'p16-hero-and-arrow',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -428,6 +412,7 @@ const CONFIG = {
    ══════════════════════════════════════════════════════════════ */
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const EXT = '<svg class="ext" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.2 6.8 6.9 3.1M6.9 3.1H3.9M6.9 3.1v3"/></svg>';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 /* Airtable sends lookups as arrays (["Kasa"]), attachments as [{url}],
@@ -664,6 +649,17 @@ function joinOrdersAndItems(orderRows, itemRows, proofs){
   for(const p of (proofs || [])){
     let b = null;
     for(const r of [].concat(p.orderRef || [])) if(byId.has(String(r))){ b = byId.get(String(r)); break; }
+    /* A few Design Requests span two orders, so OrderID arrives as
+       "recA,recB" and won't match by id — fall back to the order number. */
+    if(!b){
+      for(const r of [].concat(p.orderRef || ''))
+        for(const part of String(r).split(/[,\s]+/))
+          if(part && byId.has(part)){ b = byId.get(part); break; }
+      if(!b && p.orderNo){
+        const no = String(p.orderNo).toLowerCase();
+        if(byNo.has(no)) b = byNo.get(no);
+      }
+    }
     if(b) b.proofs.push(p); else proofOrphans++;
   }
   window.__portalProofOrphans = proofOrphans;
@@ -713,6 +709,7 @@ function mapProof(r){
     unsigned:   String(pick(r, ['Unsigned Proof','unsignedProof'], '')),
     signed:     String(pick(r, ['Signed Proof','signedProof'], '')),
     orderRef:   pickRaw(r, ['OrderID','orderRecordId','order_recID'], ''),
+    orderNo:    String(pick(r, ['Order','orderNo','order #'], '')),
     url
   };
 }
@@ -862,7 +859,7 @@ function proofChip(p, title){
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
       ${p.sig ? 'View proof' : 'Review proof'}
     </button>
-    <a class="btn btn--ghost" href="${esc(p.url)}" target="_blank" rel="noopener">New tab ↗</a>
+    <a class="btn btn--ghost" href="${esc(p.url)}" target="_blank" rel="noopener">New tab ${EXT}</a>
   </div>` : '';
 
   return `<div class="proof">
@@ -910,7 +907,7 @@ function documentRow(g){
   const url = g.unsignedProof || g.digitalProof;
   if(!url) return '';
   const label = g.unsignedProof ? 'Signed proof' : 'Digital proof';
-  return `<div class="row"><span>Document</span><a href="${esc(url)}" target="_blank" rel="noopener">${label} ↗</a></div>`;
+  return `<div class="row"><span>Document</span><a href="${esc(url)}" target="_blank" rel="noopener">${label} ${EXT}</a></div>`;
 }
 
 function cardView(g){
@@ -923,7 +920,7 @@ function cardView(g){
     : '';
 
   const track = g.tracking
-    ? `<div class="row"><span>Tracking</span><a class="mono" href="${esc(trackUrl(g.carrier, g.tracking, g.trackingUrl))}" target="_blank" rel="noopener">${esc(g.tracking)} ↗</a></div>` : '';
+    ? `<div class="row"><span>Tracking</span><a class="mono" href="${esc(trackUrl(g.carrier, g.tracking, g.trackingUrl))}" target="_blank" rel="noopener">${esc(g.tracking)} ${EXT}</a></div>` : '';
 
   return `<article class="card">
     <div class="card__top">
@@ -1073,9 +1070,6 @@ function closeProof(){
   document.body.style.overflow = '';
 }
 
-const bar = $('#topbar');
-addEventListener('scroll', () => bar.classList.toggle('is-stuck', scrollY > 12), {passive: true});
-
 /* ══════════════════════════════════════════════════════════════
    LOAD
    ══════════════════════════════════════════════════════════════ */
@@ -1128,7 +1122,6 @@ async function boot(){
   const {clientName, orders} = normalise(data);
   STATE.orders = orders;
   $('#heroClient').textContent = clientName;
-  $('#barClient').textContent = clientName;
   document.title = clientName + ' — OPENHOUSE Client Portal';
 
   if(!orders.length){
