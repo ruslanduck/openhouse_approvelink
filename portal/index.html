@@ -87,9 +87,14 @@ a{color:inherit}
 .hero__rule{height:1.5px;background:var(--ink);margin:22px 0 15px}
 .hero__eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
 .hero__name{font-family:var(--display);font-weight:400;font-size:clamp(19px,4.6vw,29px);letter-spacing:-.02em;margin-top:7px}
+/* Same voice as the client name, a step down in size and tone so the
+   hierarchy stays clear. Width is set in px, not ch — Apfel's average
+   glyph is only .42em wide, so a ch-based column would end up narrower
+   than the name sitting above it. */
 .hero__sub{
-  margin:15px auto 0;max-width:56ch;color:var(--ink-2);
-  font-family:var(--mono);font-size:12.5px;line-height:1.7;letter-spacing:.015em;
+  margin:13px auto 0;max-width:560px;color:var(--ink-2);
+  font-family:var(--display);font-weight:400;
+  font-size:clamp(14px,2.6vw,18px);line-height:1.3;letter-spacing:-.015em;
 }
 
 /* ── Summary strip ──────────────────────────────────────────── */
@@ -321,7 +326,7 @@ a:hover .ext{opacity:1}
   .wrap{padding:0 16px}
   .hero{padding:22px 0 4px}
   .hero__rule{margin:16px 0 13px}
-  .hero__sub{font-size:12px;line-height:1.65;max-width:none}
+  .hero__sub{font-size:15px;line-height:1.3;max-width:22em}
   .order__head{grid-template-columns:1fr auto;gap:14px 12px;padding:16px}
   .order__head .cell--date{grid-column:1}
   .order__head .cell--addr{grid-column:1 / -1}
@@ -349,7 +354,7 @@ a:hover .ext{opacity:1}
 
   <div class="notice" id="notice">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg>
-    <div><b>Sample data</b><span id="noticeText"></span></div>
+    <div><b id="noticeTitle">Preview</b><span id="noticeText"></span></div>
   </div>
 
   <section class="stats rv" id="stats" hidden></section>
@@ -392,7 +397,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p18-status-fallback',
+  VERSION: 'p20-hero-strapline',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -417,7 +422,7 @@ const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const EXT = '<svg class="ext" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.2 6.8 6.9 3.1M6.9 3.1H3.9M6.9 3.1v3"/></svg>';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-/* Airtable sends lookups as arrays (["Kasa"]), attachments as [{url}],
+/* Airtable sends lookups as arrays (["Acme"]), attachments as [{url}],
    failed formulas as {state:'error', value:null}. Flatten all of that. */
 function clean(v){
   if(v === null || v === undefined || v === '') return '';
@@ -1142,16 +1147,27 @@ async function boot(){
   }
 
   diag.source = data ? 'webhook' : 'sample';
+  /* Technical detail belongs in the console and the ?debug panel, never on
+     screen. A client seeing a JSON parser error learns nothing useful. */
+  if(diag.err) console.warn('Portal: ' + diag.err);
+
   if(!data){
     if(CONFIG.DEMO_FALLBACK || params.has('demo')){
       data = DEMO;
-      $('#noticeText').textContent = diag.err
+      $('#noticeTitle').textContent = DEBUG ? 'Sample data' : 'Preview';
+      $('#noticeText').textContent = DEBUG
         ? diag.err + ' Showing sample data instead.'
-        : 'Showing sample data. Live orders will appear once the webhook returns data.';
+        : 'This is a preview with placeholder orders. Real data appears once the connection is live.';
       $('#notice').classList.add('is-on');
     } else {
-      $('#orders').innerHTML = `<div class="state"><h3>We couldn't load your orders</h3>
-        <p>Check that the link is complete, or email your account manager and we'll resend it.</p></div>`;
+      /* Production failure: apologise, offer a retry, say nothing technical. */
+      $('#orders').innerHTML = `<div class="state">
+        <h3>We couldn&rsquo;t load your orders just now</h3>
+        <p>This is usually temporary. Try again in a moment &mdash; if it keeps happening,
+           reply to your last email from us and we&rsquo;ll sort it out.</p>
+        <button class="btn" id="retry" style="margin-top:18px">Try again</button>
+      </div>`;
+      const r = $('#retry'); if(r) r.addEventListener('click', () => location.reload());
       if(DEBUG) showDebug(diag, null);
       return;
     }
@@ -1219,11 +1235,11 @@ function showDebug(d, parsed){
    Delete once the webhook is live.
    ══════════════════════════════════════════════════════════════ */
 const DEMO = {
-  clientName: 'Kasa',
+  clientName: 'Sample Client',
   orders: [
     {
-      orderNo: '#S-260701-MS-NAVYSWATCH-1', createdDate: '2026-07-01', status: 'Awaiting Proof Approval',
-      shipping: {name:'Suzie Hill', company:'Kasa', address1:'2380 Hartsdale Dr', city:'Powell', state:'OH', zip:'43065'},
+      orderNo: '#SAMPLE-004', createdDate: '2026-07-01', status: 'Awaiting Proof Approval',
+      shipping: {name:'Sample Recipient', company:'Sample Client', address1:'100 Example Ave', city:'Austin', state:'TX', zip:'78702'},
       items: [
         {product:'Heavyweight Tee', color:'Black', size:'S',   qty:24, image:'', carrier:'', eta:'Aug 21, 2026',
          digitalProof:'https://artwork.byopenhouse.com/approval/?rec=demo1', proofStatus:'Proof Sent'},
@@ -1240,8 +1256,8 @@ const DEMO = {
       ]
     },
     {
-      orderNo: '#S-260701-MS-NAVYSWATCH-2', createdDate: '2026-07-01', status: 'In Production',
-      shipping: {name:'STILE Downtown Los Angeles', company:'c/o Drew Millum', address1:'929 South Broadway', city:'Los Angeles', state:'CA', zip:'90015'},
+      orderNo: '#SAMPLE-003', createdDate: '2026-07-01', status: 'In Production',
+      shipping: {name:'Sample Hotel', company:'c/o Front Desk', address1:'200 Example Blvd', city:'Los Angeles', state:'CA', zip:'90015'},
       items: [
         {product:'Structured 6-Panel Cap', color:'Sand', size:'OSFA', qty:250, carrier:'UPS', trackNumber:'1Z999AA10123456784',
          eta:'Aug 9, 2026', workApprovalDate:'2026-07-08', signatureProofReceived:true,
@@ -1249,8 +1265,8 @@ const DEMO = {
       ]
     },
     {
-      orderNo: '#S-260622-MS-SWATCH', createdDate: '2026-06-22', status: 'Complete',
-      shipping: {name:'ESA Kasa Inc', company:'Melissa Spoth', address1:'1812 E 6th St', city:'Austin', state:'TX', zip:'78702', phone:'(203) 830-9971'},
+      orderNo: '#SAMPLE-002', createdDate: '2026-06-22', status: 'Complete',
+      shipping: {name:'Sample Client Inc', company:'Sample Contact', address1:'300 Example St', city:'Austin', state:'TX', zip:'78702'},
       items: [
         {product:'Crewneck Sweatshirt', color:'Heather Grey', size:'M', qty:40, carrier:'FedEx', trackNumber:'391234567890',
          eta:'Delivered Jul 2, 2026', workApprovalDate:'2026-06-24', signatureProofReceived:true,
@@ -1262,8 +1278,8 @@ const DEMO = {
       ]
     },
     {
-      orderNo: '#S-260429-MS', createdDate: '2026-04-29', status: 'Complete',
-      shipping: {name:'ESA Kasa Inc', company:'Melissa Spoth', address1:'1812 E 6th St', city:'Austin', state:'TX', zip:'78702', phone:'(203) 830-9971'},
+      orderNo: '#SAMPLE-001', createdDate: '2026-04-29', status: 'Complete',
+      shipping: {name:'Sample Client Inc', company:'Sample Contact', address1:'300 Example St', city:'Austin', state:'TX', zip:'78702'},
       items: [
         {product:'Canvas Tote', color:'Natural', size:'', qty:500, carrier:'USPS', trackNumber:'9400111899223197428490',
          eta:'Delivered May 12, 2026', workApprovalDate:'2026-05-01', signatureProofReceived:true,
