@@ -229,6 +229,14 @@ a:hover .ext{opacity:1}
 .proof__note em{display:block;font-style:normal;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;
   text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
 .proof__actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.proof__tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--paper-2);border-radius:4px;padding:3px 6px}
+/* several proofs on one product read as one set, not four separate blocks */
+.proofset{margin-top:auto;border-top:1px solid var(--line-2);background:#FBFAF7}
+.proofset__h{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);padding:11px 14px 0}
+.proofset .proof{border-top:0;background:transparent;margin-top:0;padding:10px 14px}
+.proofset .proof + .proof{border-top:1px dashed var(--line)}
 
 .btn{
   display:inline-flex;align-items:center;gap:7px;
@@ -397,7 +405,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p21-item-status',
+  VERSION: 'p22-multi-proof',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -540,6 +548,16 @@ function swatchHex(color, given){
   const words = String(color).toLowerCase().split(/[^a-z]+/).filter(Boolean);
   for(const w of words) if(NAMED[w]) return NAMED[w];
   return '#D6D2C8';
+}
+
+/* Some Airtable fields hold a markdown link rather than a bare value:
+   "[1ZC15A060...](http://wwwapps.ups.com/WebTracking/...)". Split it. */
+function parseLinkish(v){
+  const raw = String(v ?? '').trim();
+  const m = raw.match(/^\[([^\]]+)\]\(\s*(\S+?)\s*\)$/);
+  return m
+    ? {text: m[1].trim(), url: m[2].trim().replace(/^http:\/\//i, 'https://')}
+    : {text: raw, url: ''};
 }
 
 /* tracking URL from carrier when Make doesn't supply one */
@@ -687,8 +705,9 @@ function mapItem(r){
     sizeText:String(pick(r, ['sizeBreakdown','sizes','sizeRun'], '')),
     image:   imageUrl(pickRaw(r, ['productImage','image','imageUrl','mockup','mockupUrl','proofImage','photo'])),
     carrier: String(pick(r, ['carrier','shippingCarrier'], '')),
-    tracking:String(pick(r, ['trackingNumber','trackNumber','tracking'], '')),
-    trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], '')),
+    tracking:parseLinkish(pick(r, ['trackingNumber','trackNumber','tracking'], '')).text,
+    trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], ''))
+                || parseLinkish(pick(r, ['trackingNumber','trackNumber','tracking'], '')).url,
     eta:     String(pick(r, ['customerEtaDisplay','customerETADisplay','eta','customerEta'], '')),
     clientStatus: String(pick(r, ['client_status','clientStatus'], '')),
     approvalDate: String(pick(r, ['workApprovalDate','approvalDate'], '')),
@@ -720,8 +739,21 @@ function mapProof(r){
     signed:     String(pick(r, ['Signed Proof','signedProof'], '')),
     orderRef:   pickRaw(r, ['OrderID','orderRecordId','order_recID'], ''),
     orderNo:    String(pick(r, ['Order','orderNo','order #'], '')),
+    /* fields that distinguish two proofs of the same product */
+    color:      String(pick(r, ['Base Color','baseColor','Color SKU'], '')),
+    variant:    String(pick(r, ['Variant','variantName'], '')).replace(/^[\s\-–]+|[\s\-–]+$/g, ''),
+    designId:   String(pick(r, ['Design ID','designId'], '')),
+    requestDate:String(pick(r, ['Request Date','requestDate'], '')),
     url
   };
+}
+
+/* With several proofs on one card, four identical "Proof approved V1" rows
+   are indistinguishable. Pick the first field that actually differs. */
+function proofTag(p){
+  const v = [p.color, p.variant, p.designId && 'Design ' + p.designId,
+             p.requestDate && fmtDate(p.requestDate)].find(x => x && /[a-z0-9]/i.test(x));
+  return v || '';
 }
 
 /* Design "Status" tracks internal design work, not the client decision, so
@@ -869,7 +901,7 @@ function groupByColorway(items){
    ══════════════════════════════════════════════════════════════ */
 let STATE = {orders: [], filter: 'all', query: ''};
 
-function proofChip(p, title){
+function proofChip(p, title, tag){
   const st = proofState(p);
   if(!st && !p.url) return '';
   const label = st ? st.label : 'Proof available';
@@ -877,6 +909,7 @@ function proofChip(p, title){
   const when  = p.sig && p.approvedAt ? fmtDate(p.approvedAt)
               : (!p.sig && p.sentAt ? 'Sent ' + fmtDate(p.sentAt) : '');
   const ver   = p.version ? `<span class="proof__label">V${esc(p.version)}</span>` : '';
+  const mark  = tag ? `<span class="proof__tag">${esc(tag)}</span>` : '';
 
   /* Only surfaced when the note field is known to be client-safe. */
   const text = p.rejected ? (p.reason || p.note) : (CONFIG.SHOW_PROOF_NOTES ? p.note : '');
@@ -892,7 +925,7 @@ function proofChip(p, title){
   </div>` : '';
 
   return `<div class="proof">
-    <div class="proof__head"><span class="pill ${cls}">${esc(label)}</span>${ver}
+    <div class="proof__head"><span class="pill ${cls}">${esc(label)}</span>${mark}${ver}
       ${when ? `<span class="proof__label">${esc(when)}</span>` : ''}</div>
     ${note}${actions}
   </div>`;
@@ -901,8 +934,17 @@ function proofChip(p, title){
 /* Proof block on a colourway card: real Design Request first, then the
    legacy per-line-item fields as a fallback. */
 function proofView(g){
-  if(g.proofs && g.proofs.length)
-    return g.proofs.map(p => proofChip(p, g.product + (g.color ? ' — ' + g.color : ''))).join('');
+  if(g.proofs && g.proofs.length){
+    const many = g.proofs.length > 1;
+    const body = g.proofs.map(p => proofChip(
+      p,
+      g.product + (g.color ? ' — ' + g.color : '') + (many && proofTag(p) ? ' — ' + proofTag(p) : ''),
+      many ? proofTag(p) : ''
+    )).join('');
+    return many
+      ? `<div class="proofset"><div class="proofset__h">${g.proofs.length} proofs for this product</div>${body}</div>`
+      : body;
+  }
 
   const st = String(g.proofStatus || '').trim();
   const link = g.digitalProof || '';
