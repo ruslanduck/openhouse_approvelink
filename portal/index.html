@@ -409,7 +409,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p23-report',
+  VERSION: 'p24-item-join',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -700,6 +700,7 @@ function joinOrdersAndItems(orderRows, itemRows, proofs){
 
 function mapItem(r){
   return {
+    recId:   String(pick(r, ['recordID','recordId','id'], '')),
     product: productName(r),
     color:   String(pick(r, ['variantColor','FS Color Variant (from Products_new)','color','colour','colorway','baseColor','garmentColor'], '')),
     colorHex:String(pick(r, ['colorHex','hex','colourHex','baseHex'], '')),
@@ -744,7 +745,9 @@ function mapProof(r){
     orderRef:   pickRaw(r, ['OrderID','orderRecordId','order_recID'], ''),
     orderNo:    String(pick(r, ['Order','orderNo','order #'], '')),
     /* fields that distinguish two proofs of the same product */
-    color:      String(pick(r, ['Base Color','baseColor','Color SKU'], '')),
+    itemRef:    pickRaw(r, ['Digital proof recID','digitalProofRecId','Line Item'], ''),
+    color:      String(pick(r, ['Base Color','baseColor'], '')),
+    colorSku:   String(pick(r, ['Color SKU','colorSku'], '')),
     variant:    String(pick(r, ['Variant','variantName'], '')).replace(/^[\s\-–]+|[\s\-–]+$/g, ''),
     designId:   String(pick(r, ['Design ID','designId'], '')),
     requestDate:String(pick(r, ['Request Date','requestDate'], '')),
@@ -755,9 +758,21 @@ function mapProof(r){
 /* With several proofs on one card, four identical "Proof approved V1" rows
    are indistinguishable. Pick the first field that actually differs. */
 function proofTag(p){
-  const v = [p.color, p.variant, p.designId && 'Design ' + p.designId,
-             p.requestDate && fmtDate(p.requestDate)].find(x => x && /[a-z0-9]/i.test(x));
-  return v || '';
+  /* Reject machine identifiers (Shopify GIDs, urls) and drop a trailing
+     "- 100 pcs" — the card already states the quantity. A candidate with no
+     letters left after cleaning carries no information, so keep looking. */
+  const tidy = v => {
+    let t = String(v || '').trim();
+    if(!t || /gid:\/\/|https?:\/\/|^rec[A-Za-z0-9]{14}$/i.test(t)) return '';
+    t = t.replace(/\s*[-–]\s*[\d,.]+\s*(pcs|pieces|units|шт)\.?$/i, '');
+    /* a bare quantity distinguishes nothing */
+    if(/^[\d,.\s]*(pcs|pieces|units|шт)?\.?$/i.test(t)) return '';
+    t = t.replace(/^[\s\-–\/]+|[\s\-–\/]+$/g, '').replace(/\s{2,}/g, ' ');
+    return /[a-z]/i.test(t) ? t : '';
+  };
+  return tidy(p.color) || tidy(p.colorSku) || tidy(p.variant) ||
+         (p.designId ? 'Design ' + p.designId : '') ||
+         (p.requestDate ? fmtDate(p.requestDate) : '');
 }
 
 /* Design "Status" tracks internal design work, not the client decision, so
@@ -856,10 +871,34 @@ function buildOrder(o, items, proofs){
    silently hidden one. */
 function attachProofs(groups, proofs){
   const key = t => String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  /* Design Requests carry the line item's record id, which is exact.
+     Name matching is only a fallback for records missing that link. */
+  const byItem = new Map();
+  const byName = new Map();
+  for(const g of groups){
+    for(const id of (g.itemIds || [])) byItem.set(String(id), g);
+    const k = key(g.product);
+    if(!byName.has(k)) byName.set(k, []);
+    byName.get(k).push(g);
+  }
+
   const left = [];
   for(const p of proofs){
-    const k = key(p.name);
-    const hit = k && groups.find(g => key(g.product) === k);
+    let hit = null;
+    for(const r of [].concat(p.itemRef || [])) if(byItem.has(String(r))){ hit = byItem.get(String(r)); break; }
+
+    if(!hit){
+      const cands = byName.get(key(p.name)) || [];
+      if(cands.length === 1) hit = cands[0];
+      else if(cands.length > 1){
+        /* Several colourways share this product name. Only bind when the
+           proof names its own colour — otherwise a wrong pairing would be
+           shown to the client as fact. */
+        const c = key(p.color) || key(p.colorSku);
+        if(c) hit = cands.find(g => key(g.color) === c || key(g.color).includes(c) || c.includes(key(g.color))) || null;
+      }
+    }
     if(hit){ (hit.proofs = hit.proofs || []).push(p); } else left.push(p);
   }
   return {groups, proofs: left};
@@ -873,7 +912,7 @@ function groupByColorway(items){
     if(!map.has(key)){
       map.set(key, {
         product: it.product, color: it.color, hex: swatchHex(it.color, it.colorHex),
-        image: it.image, sizes: new Map(), total: 0,
+        image: it.image, sizes: new Map(), total: 0, itemIds: [],
         carrier: it.carrier, tracking: it.tracking, trackingUrl: it.trackingUrl,
         eta: it.eta, approvalDate: it.approvalDate, clientStatus: it.clientStatus,
         sigReceived: it.sigReceived, unsignedProof: it.unsignedProof, digitalProof: it.digitalProof,
@@ -881,6 +920,7 @@ function groupByColorway(items){
       });
     }
     const g = map.get(key);
+    if(it.recId) g.itemIds.push(it.recId);
     if(it.size && !EMPTY_SIZE.test(it.size.trim())){
       g.sizes.set(it.size, (g.sizes.get(it.size) || 0) + it.qty);
     } else if(it.sizeText){
