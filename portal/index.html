@@ -409,7 +409,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p24-item-join',
+  VERSION: 'p26-addr-sig',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -779,8 +779,13 @@ function proofTag(p){
    the client-facing state is derived from the signature + reject flags.
    Returns null when there is nothing meaningful to tell the client. */
 function proofState(p){
-  if(p.rejected)                            return {cls:'pill--bad',  label:'Changes requested'};
+  /* Both flags can sit on one record: the client asked for changes, the work
+     was redone, and the client then signed off — the reject flag is never
+     cleared. The signature is the later, decisive event, so it wins. Telling
+     a client "changes requested" on a proof they already approved would ask
+     them to act when nothing is needed. */
   if(p.sig)                                 return {cls:'pill--ok',   label:'Proof approved'};
+  if(p.rejected)                            return {cls:'pill--bad',  label:'Changes requested'};
   if(/proof sent|pending|await/i.test(p.status)) return {cls:'pill--warn', label:'Awaiting your approval'};
   return null;
 }
@@ -841,7 +846,9 @@ function buildOrder(o, items, proofs){
          [pick(shipObj,['city']), [pick(shipObj,['state']), pick(shipObj,['zip','postal'])].filter(Boolean).join(' ')].filter(Boolean).join(', '),
          pick(shipObj,['phone'])]
       : shipLines
-    ).map(x => String(x || '').trim()).filter(Boolean);
+    ).map(x => String(x || '').trim())
+     /* "\n\n\n,\n\n\n" leaves a lone comma — punctuation is not an address */
+     .filter(x => /[a-z0-9]/i.test(x));
 
   let no = String(orderNoOf(o) || '—');
   if(no !== '—' && !no.startsWith('#')) no = '#' + no;
@@ -1037,7 +1044,9 @@ function itemStatusRow(g, orderStatus){
 
 function cardView(g, orderStatus){
   const max = Math.max(1, ...g.sizes.map(s => s.qty));
-  const bar = g.sizes.length
+  /* A proportional bar with one segment is just a black line — it shows no
+     proportion. Only draw it when there is a run to compare. */
+  const bar = g.sizes.length > 1
     ? `<div class="run__bar" aria-hidden="true">${g.sizes.map(s =>
         `<div class="run__seg" style="flex:${Math.max(s.qty, max*0.06)}"></div>`).join('')}</div>` : '';
   const chips = g.sizes.length
