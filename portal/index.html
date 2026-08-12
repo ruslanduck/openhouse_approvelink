@@ -410,7 +410,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p29-uniq-tags',
+  VERSION: 'p30-doc-single-source',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -932,6 +932,15 @@ function attachProofs(groups, proofs){
     }
     if(hit){ (hit.proofs = hit.proofs || []).push(p); } else left.push(p);
   }
+
+  /* Stable, readable order on the card: oldest decision first, then design no.
+     Airtable returns them unsorted, which reads as 0980, 0981, 0979, 0978. */
+  const when = p => sortableDate(p.approvedAt || p.sentAt || p.requestDate);
+  const bySeq = (a, b) => (when(a) - when(b))
+    || String(a.designId || '').localeCompare(String(b.designId || ''), undefined, {numeric: true});
+  for(const g of groups) if(g.proofs) g.proofs.sort(bySeq);
+  left.sort(bySeq);
+
   return {groups, proofs: left};
 }
 
@@ -1052,17 +1061,23 @@ function orderProofsView(o){
 /* Spec: once the signature is in, link the proof document — the Unsigned
    Proof file if there is one, otherwise the digital proof. The file can hang
    off the line item OR off the matched Design Request, so check both. */
-function documentRow(g){
-  if(!g.sigReceived) return '';
+/* Single source of truth: the card and the ?debug report both call this, so
+   the diagnostics can never claim "no document" while the card shows one. */
+function documentOf(g){
+  if(!g.sigReceived) return null;
   const ps = g.proofs || [];
   const file = g.unsignedProof
             || ps.map(p => p.signed).find(Boolean)
             || ps.map(p => p.unsigned).find(Boolean) || '';
   const digital = g.digitalProof || ps.map(p => p.url).find(Boolean) || '';
   const url = file || digital;
-  if(!url) return '';
-  const label = file ? 'Signed proof' : 'Digital proof';
-  return `<div class="row"><span>Document</span><a href="${esc(url)}" target="_blank" rel="noopener">${label} ${EXT}</a></div>`;
+  return url ? {url, label: file ? 'Signed proof' : 'Digital proof'} : null;
+}
+
+function documentRow(g){
+  const d = documentOf(g);
+  if(!d) return '';
+  return `<div class="row"><span>Document</span><a href="${esc(d.url)}" target="_blank" rel="noopener">${d.label} ${EXT}</a></div>`;
 }
 
 /* A product can sit at a different stage than its order — e.g. one item
@@ -1380,7 +1395,7 @@ function buildReport(d, parsed){
         const gapNote = g.sizes.length && sized !== g.total ? ` (Σ${sized} of ${g.total})` : '';
         L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}${gapNote}` +
           ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
-          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${g.sigReceived && (g.unsignedProof || g.digitalProof) ? (g.unsignedProof ? 'signed' : 'digital') : '-'}` +
+          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${(d => d ? d.label.split(' ')[0].toLowerCase() : '-')(documentOf(g))}` +
           ` | img ${g.image ? 'Y' : '-'} | st ${g.clientStatus || '-'}` +
           ` | proofs ${ps.length ? ps.join(', ') : '-'}`);
       }
