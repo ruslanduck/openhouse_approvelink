@@ -203,6 +203,7 @@ a{color:inherit}
 .run__seg:nth-child(2n){opacity:.66}
 .run__seg:nth-child(3n){opacity:.74}
 .run__list{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.run__note{font-family:var(--mono);font-size:10px;letter-spacing:.04em;color:var(--ink-3);margin-top:7px}
 .sz{
   font-family:var(--mono);font-size:11px;letter-spacing:.02em;
   border:1px solid var(--line);border-radius:6px;padding:3px 7px;color:var(--ink-2);
@@ -409,7 +410,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p27-empty-qty',
+  VERSION: 'p28-doc-gap',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -1032,11 +1033,19 @@ function orderProofsView(o){
   return `<div class="oproofs"><div class="oproofs__h">Proofs for this order</div><ul>${rows}</ul></div>`;
 }
 
+/* Spec: once the signature is in, link the proof document — the Unsigned
+   Proof file if there is one, otherwise the digital proof. The file can hang
+   off the line item OR off the matched Design Request, so check both. */
 function documentRow(g){
   if(!g.sigReceived) return '';
-  const url = g.unsignedProof || g.digitalProof;
+  const ps = g.proofs || [];
+  const file = g.unsignedProof
+            || ps.map(p => p.signed).find(Boolean)
+            || ps.map(p => p.unsigned).find(Boolean) || '';
+  const digital = g.digitalProof || ps.map(p => p.url).find(Boolean) || '';
+  const url = file || digital;
   if(!url) return '';
-  const label = g.unsignedProof ? 'Signed proof' : 'Digital proof';
+  const label = file ? 'Signed proof' : 'Digital proof';
   return `<div class="row"><span>Document</span><a href="${esc(url)}" target="_blank" rel="noopener">${label} ${EXT}</a></div>`;
 }
 
@@ -1057,8 +1066,14 @@ function cardView(g, orderStatus){
   const bar = g.sizes.length > 1
     ? `<div class="run__bar" aria-hidden="true">${g.sizes.map(s =>
         `<div class="run__seg" style="flex:${Math.max(s.qty, max*0.06)}"></div>`).join('')}</div>` : '';
+  /* Breakdowns often omit units held aside ("8 EXTRA Units in M & L"), so the
+     chips can sum below the stated quantity. Say so rather than let the client
+     find the gap by adding up. */
+  const sized = g.sizes.reduce((n, s) => n + s.qty, 0);
+  const gap = g.total - sized;
   const chips = g.sizes.length
-    ? `<div class="run__list">${g.sizes.map(s => `<span class="sz">${esc(s.label)} <b>${s.qty}</b></span>`).join('')}</div>`
+    ? `<div class="run__list">${g.sizes.map(s => `<span class="sz">${esc(s.label)} <b>${s.qty}</b></span>`).join('')}</div>` +
+      (gap > 0 ? `<div class="run__note">${gap.toLocaleString()} more not listed by size</div>` : '')
     : '';
 
   const track = g.tracking
@@ -1340,7 +1355,9 @@ function buildReport(d, parsed){
       L.push(`  ${o.no} | ${o.status} | ${o.groups.length}cw ${units}u | ${String(o.created).slice(0,10)} | addr ${o.shipLines.length}L`);
       for(const g of o.groups){
         const ps = (g.proofs || []).map(x => { const st = proofState(x); return (st ? st.label.replace(/^(Proof |Awaiting your )/,'') : 'hidden') + (proofTag(x) ? '(' + proofTag(x) + ')' : ''); });
-        L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}` +
+        const sized = g.sizes.reduce((n, z) => n + z.qty, 0);
+        const gapNote = g.sizes.length && sized !== g.total ? ` (Σ${sized} of ${g.total})` : '';
+        L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}${gapNote}` +
           ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
           ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${g.sigReceived && (g.unsignedProof || g.digitalProof) ? (g.unsignedProof ? 'signed' : 'digital') : '-'}` +
           ` | img ${g.image ? 'Y' : '-'} | st ${g.clientStatus || '-'}` +
