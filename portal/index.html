@@ -409,7 +409,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p26-addr-sig',
+  VERSION: 'p27-empty-qty',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -419,6 +419,11 @@ const CONFIG = {
      instructions). Off by default — turn on only if that field gets
      cleaned up or split into a client-safe one. */
   SHOW_PROOF_NOTES: false,
+
+  /* Orders with no line items at all (placeholders, cancelled shells) say
+     nothing to a client. Hidden by default; the ?debug report always states
+     how many were dropped, so nothing disappears unnoticed. */
+  HIDE_EMPTY_ORDERS: true,
 
   // Fall back to sample data when the webhook isn't reachable yet.
   // While true, a yellow banner appears whenever sample data is shown,
@@ -639,6 +644,9 @@ function normalise(raw){
   }
 
   orders.sort((a,b) => b.ts - a.ts);
+  const empty = orders.filter(o => !o.groups.length).length;
+  window.__portalEmptyOrders = empty;
+  if(CONFIG.HIDE_EMPTY_ORDERS && empty) orders = orders.filter(o => o.groups.length);
   if(!clientName) clientName = pick(rows[0] || {}, ['companyName','clientName','client','customer','company']) || '';
   return {clientName: String(clientName || 'Client'), orders};
 }
@@ -1064,7 +1072,9 @@ function cardView(g, orderStatus){
       <div class="card__id">
         <h4 class="card__name">${esc(g.product)}</h4>
         ${g.color ? `<span class="colorway"><i class="dot" style="background:${esc(g.hex)}"></i>${esc(g.color)}</span>` : ''}
-        <div class="card__qty"><b>${g.total.toLocaleString()}</b><i>pcs</i></div>
+        <div class="card__qty">${g.total > 0
+          ? `<b>${g.total.toLocaleString()}</b><i>pcs</i>`
+          : `<i>Quantity to be confirmed</i>`}</div>
       </div>
     </div>
     ${(bar || chips) ? `<div class="run">${bar}${chips}</div>` : ''}
@@ -1086,7 +1096,8 @@ function orderView(o, i){
   /* Contents summary sits on the collapsed row, so the client can scan
      order sizes without opening anything. */
   const summary = n
-    ? `${n} colorway${n === 1 ? '' : 's'} &middot; ${units.toLocaleString()} unit${units === 1 ? '' : 's'}`
+    ? `${n} colorway${n === 1 ? '' : 's'}` +
+      (units > 0 ? ` &middot; ${units.toLocaleString()} unit${units === 1 ? '' : 's'}` : '')
     : 'No items yet';
   const extra = [
     o.poNumber ? `<div><span>PO</span>${esc(o.poNumber)}</div>` : '',
@@ -1308,7 +1319,8 @@ function buildReport(d, parsed){
   L.push('http: ' + (d.http || '—') + ' · source: ' + d.source);
   L.push('payload: orders ' + [].concat(j.orders || []).length +
          ' · items ' + items.length + ' · proofs ' + [].concat(j.proofs || []).length);
-  L.push('unmatched: items ' + (window.__portalOrphans || 0) + ' · proofs ' + (window.__portalProofOrphans || 0));
+  L.push('unmatched: items ' + (window.__portalOrphans || 0) + ' · proofs ' + (window.__portalProofOrphans || 0) +
+         ' · empty orders hidden ' + (window.__portalEmptyOrders || 0));
   if(d.err) L.push('PROBLEM: ' + d.err);
 
   if(items.length) L.push('coverage: ' + [
