@@ -410,7 +410,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p28-doc-gap',
+  VERSION: 'p29-uniq-tags',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -784,6 +784,19 @@ function proofTag(p){
          (p.requestDate ? fmtDate(p.requestDate) : '');
 }
 
+/* Tags only help if they differ. Four proofs all carrying Base Color
+   "Rainbow" distinguish nothing, so fall back to the design number. */
+function proofTags(list){
+  const base = list.map(proofTag);
+  const clash = base.some((t, i) => t && base.indexOf(t) !== i);
+  if(!clash) return base;
+  return list.map((p, i) => {
+    const alt = p.designId ? 'Design ' + p.designId
+              : (p.requestDate ? fmtDate(p.requestDate) : '#' + (i + 1));
+    return base[i] && base[i] !== alt ? base[i] + ' · ' + alt : alt;
+  });
+}
+
 /* Design "Status" tracks internal design work, not the client decision, so
    the client-facing state is derived from the signature + reject flags.
    Returns null when there is nothing meaningful to tell the client. */
@@ -864,8 +877,10 @@ function buildOrder(o, items, proofs){
 
   const built = attachProofs(groupByColorway(items), proofs || []);
   /* every proof on this order that the client will actually see */
+  /* A proof with no derivable state still renders as "Proof available" when
+     it has a link, so the count must include it. */
   const shown = built.proofs.concat(...built.groups.map(g => g.proofs || []))
-                            .filter(p => proofState(p));
+                            .filter(p => proofState(p) || p.url);
 
   return {
     no,
@@ -979,7 +994,7 @@ function proofChip(p, title, tag){
   const actions = p.url ? `<div class="proof__actions">
     <button class="btn" data-proof="${esc(p.url)}" data-proof-title="${esc(title || p.name || 'Proof')}">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-      ${p.sig ? 'View proof' : 'Review proof'}
+      ${st && st.cls === 'pill--warn' ? 'Review proof' : 'View proof'}
     </button>
     <a class="btn btn--ghost" href="${esc(p.url)}" target="_blank" rel="noopener">New tab ${EXT}</a>
   </div>` : '';
@@ -996,10 +1011,11 @@ function proofChip(p, title, tag){
 function proofView(g){
   if(g.proofs && g.proofs.length){
     const many = g.proofs.length > 1;
-    const body = g.proofs.map(p => proofChip(
+    const tags = many ? proofTags(g.proofs) : g.proofs.map(() => '');
+    const body = g.proofs.map((p, i) => proofChip(
       p,
-      g.product + (g.color ? ' — ' + g.color : '') + (many && proofTag(p) ? ' — ' + proofTag(p) : ''),
-      many ? proofTag(p) : ''
+      g.product + (g.color ? ' — ' + g.color : '') + (tags[i] ? ' — ' + tags[i] : ''),
+      tags[i]
     )).join('');
     return many
       ? `<div class="proofset"><div class="proofset__h">${g.proofs.length} proofs for this product</div>${body}</div>`
@@ -1354,7 +1370,12 @@ function buildReport(d, parsed){
       const units = o.groups.reduce((n, g) => n + g.total, 0);
       L.push(`  ${o.no} | ${o.status} | ${o.groups.length}cw ${units}u | ${String(o.created).slice(0,10)} | addr ${o.shipLines.length}L`);
       for(const g of o.groups){
-        const ps = (g.proofs || []).map(x => { const st = proofState(x); return (st ? st.label.replace(/^(Proof |Awaiting your )/,'') : 'hidden') + (proofTag(x) ? '(' + proofTag(x) + ')' : ''); });
+        const tg = (g.proofs || []).length > 1 ? proofTags(g.proofs) : (g.proofs || []).map(proofTag);
+        const ps = (g.proofs || []).map((x, i) => {
+          const st = proofState(x);
+          const lbl = st ? st.label.replace(/^(Proof |Awaiting your )/, '') : (x.url ? 'available' : 'hidden');
+          return lbl + (tg[i] ? '(' + tg[i] + ')' : '');
+        });
         const sized = g.sizes.reduce((n, z) => n + z.qty, 0);
         const gapNote = g.sizes.length && sized !== g.total ? ` (Σ${sized} of ${g.total})` : '';
         L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}${gapNote}` +
