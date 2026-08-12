@@ -305,10 +305,12 @@ a:hover .ext{opacity:1}
   font-family:var(--mono);font-size:11.5px;line-height:1.55;overflow:auto;
 }
 .dbg.is-on{display:block}
-.dbg__bar{position:sticky;top:0;display:flex;gap:10px;align-items:center;
+.dbg__bar{position:sticky;top:0;display:flex;gap:8px;align-items:center;}
+.dbg__bar #dbgCopy{margin-left:auto}
+.dbg__bar{
   padding:9px 14px;background:#16160F;border-bottom:1px solid #33322A;color:#9C998F;
   font-size:10px;letter-spacing:.09em;text-transform:uppercase}
-.dbg__bar button{margin-left:auto;color:#DFDCD2;border:1px solid #44433A;border-radius:6px;
+.dbg__bar button{color:#DFDCD2;border:1px solid #44433A;border-radius:6px;
   padding:4px 9px;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase}
 .dbg__body{padding:12px 14px 20px;white-space:pre-wrap;word-break:break-word}
 .dbg h4{margin:14px 0 5px;color:#E6C87A;font-family:var(--mono);font-size:10.5px;
@@ -381,7 +383,9 @@ a:hover .ext{opacity:1}
 </main>
 
 <div class="dbg" id="dbg">
-  <div class="dbg__bar">Webhook diagnostics <span id="dbgVer" style="color:#E6C87A"></span> <button onclick="document.getElementById('dbg').classList.remove('is-on')">Hide</button></div>
+  <div class="dbg__bar">Webhook diagnostics <span id="dbgVer" style="color:#E6C87A"></span>
+    <button id="dbgCopy">Copy report</button>
+    <button onclick="document.getElementById('dbg').classList.remove('is-on')">Hide</button></div>
   <div class="dbg__body" id="dbgBody"></div>
 </div>
 
@@ -405,7 +409,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p22-multi-proof',
+  VERSION: 'p23-report',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -1241,6 +1245,53 @@ async function boot(){
   if(DEBUG) showDebug(diag, {clientName, orders});
 }
 
+/* A compact digest of what arrived and how it was read. Beats pasting
+   thousands of characters of raw JSON when comparing several clients. */
+function buildReport(d, parsed){
+  const j = (() => { try { return JSON.parse(d.raw); } catch { return {}; } })();
+  const items = [].concat(j.items || []);
+  const cov = (label, fn) => `${label} ${items.filter(fn).length}/${items.length}`;
+  const has = k => r => { const v = r[k]; return !(v === null || v === undefined || v === '' || (Array.isArray(v) && !v.filter(x => x !== null && x !== '').length)); };
+
+  const L = [];
+  L.push('PORTAL REPORT · build ' + CONFIG.VERSION);
+  L.push('record_id: ' + (d.recordId || '(none)'));
+  L.push('http: ' + (d.http || '—') + ' · source: ' + d.source);
+  L.push('payload: orders ' + [].concat(j.orders || []).length +
+         ' · items ' + items.length + ' · proofs ' + [].concat(j.proofs || []).length);
+  L.push('unmatched: items ' + (window.__portalOrphans || 0) + ' · proofs ' + (window.__portalProofOrphans || 0));
+  if(d.err) L.push('PROBLEM: ' + d.err);
+
+  if(items.length) L.push('coverage: ' + [
+    cov('variantColor', has('Variant Color')), cov('variantSize', has('Variant Size')),
+    cov('baseColor', has('Base Color')), cov('sizeBreakdown', has('Size Breakdown')),
+    cov('productImage', has('Product Image')), cov('carrier', has('Carrier')),
+    cov('tracking', has('Tracking Number')), cov('trackingUrl', has('tracking_url')),
+    cov('eta', has('Customer ETA Display')), cov('workApprovalDate', has('Work Approval Date')),
+    cov('sigReceived', has('Proof Signature Received')), cov('unsignedProof', has('Unsigned Proof')),
+    cov('clientStatus', has('client_status'))
+  ].join(' · '));
+
+  if(parsed){
+    L.push('client: ' + parsed.clientName + ' · orders rendered: ' + parsed.orders.length);
+    for(const o of parsed.orders){
+      const units = o.groups.reduce((n, g) => n + g.total, 0);
+      L.push(`  ${o.no} | ${o.status} | ${o.groups.length}cw ${units}u | ${String(o.created).slice(0,10)} | addr ${o.shipLines.length}L`);
+      for(const g of o.groups){
+        const ps = (g.proofs || []).map(x => { const st = proofState(x); return (st ? st.label.replace(/^(Proof |Awaiting your )/,'') : 'hidden') + (proofTag(x) ? '(' + proofTag(x) + ')' : ''); });
+        L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}` +
+          ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
+          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${g.sigReceived && (g.unsignedProof || g.digitalProof) ? (g.unsignedProof ? 'signed' : 'digital') : '-'}` +
+          ` | img ${g.image ? 'Y' : '-'} | st ${g.clientStatus || '-'}` +
+          ` | proofs ${ps.length ? ps.join(', ') : '-'}`);
+      }
+      if(o.proofs && o.proofs.length)
+        L.push('    [order-level proofs] ' + o.proofs.map(x => (x.name || '?') + ':' + (proofState(x) ? proofState(x).label : 'hidden')).join(', '));
+    }
+  }
+  return L.join('\n');
+}
+
 /* Shows exactly what the webhook returned and how it was understood.
    Add ?debug to the URL. Safe to leave in — invisible without the flag. */
 function showDebug(d, parsed){
@@ -1280,6 +1331,15 @@ function showDebug(d, parsed){
   out.push(`<h4>Raw response (first 4000 chars)</h4>${esc(d.raw).slice(0, 4000) || '(empty)'}`);
 
   $('#dbgVer').textContent = '· build ' + CONFIG.VERSION;
+  const btn = $('#dbgCopy');
+  if(btn) btn.onclick = () => {
+    const txt = buildReport(d, parsed);
+    navigator.clipboard?.writeText(txt).then(
+      () => { btn.textContent = 'Copied'; setTimeout(() => btn.textContent = 'Copy report', 1600); },
+      () => { $('#dbgBody').textContent = txt; }
+    );
+    console.log(txt);
+  };
   $('#dbgBody').innerHTML = out.join('\n\n');
   $('#dbg').classList.add('is-on');
 }
