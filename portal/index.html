@@ -410,7 +410,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p31-proof-order',
+  VERSION: 'p33-report-labels',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -578,13 +578,15 @@ function trackUrl(carrier, tn, given){
   const t = encodeURIComponent(raw);
   let c = String(carrier).toLowerCase();
 
-  /* Carrier is often blank while the number itself identifies the courier. */
+  /* Carrier is often blank while the number itself identifies the courier —
+     but only a distinctive prefix is real evidence. A bare digit count is
+     shared by several couriers, and a confidently wrong link that 404s is
+     worse for the client than a search that finds the right one. */
   if(!c || c === 'other'){
     const d = raw.replace(/\s/g, '');
-    if(/^1Z/i.test(d))                     c = 'ups';
+    if(/^1Z/i.test(d))                          c = 'ups';
     else if(/^(94|93|92|95)\d{18,20}$/.test(d)) c = 'usps';
-    else if(/^(96\d{18}|\d{12}|\d{15})$/.test(d)) c = 'fedex';
-    else if(/^\d{10}$/.test(d))            c = 'dhl';
+    else if(/^96\d{16,22}$/.test(d))            c = 'fedex';
   }
 
   if(c.includes('ups'))   return 'https://www.ups.com/track?tracknum=' + t;
@@ -1390,7 +1392,13 @@ function buildReport(d, parsed){
         const tg = (g.proofs || []).length > 1 ? proofTags(g.proofs) : (g.proofs || []).map(proofTag);
         const ps = (g.proofs || []).map((x, i) => {
           const st = proofState(x);
-          const lbl = st ? st.label.replace(/^(Proof |Awaiting your )/, '') : (x.url ? 'available' : 'hidden');
+          /* short, unambiguous codes — "Awaiting your approval" trimmed to
+             "approval" read like a noun rather than a state */
+          const lbl = !st ? (x.url ? 'available' : 'hidden')
+                    : st.cls === 'pill--ok'   ? 'approved'
+                    : st.cls === 'pill--bad'  ? 'changes-requested'
+                    : st.cls === 'pill--warn' ? 'awaiting-client'
+                    : 'available';
           return lbl + (tg[i] ? '(' + tg[i] + ')' : '');
         });
         const sized = g.sizes.reduce((n, z) => n + z.qty, 0);
