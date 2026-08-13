@@ -76,23 +76,27 @@ a{color:inherit}
 
 .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
 
-/* ── Hero ───────────────────────────────────────────────────── */
-.hero{padding:34px 0 6px;text-align:center}
-.hero__mark{
-  font-family:var(--display);font-weight:400;
-  font-size:clamp(40px,16.5vw,205px);
-  line-height:.86;letter-spacing:-.05em;
-  margin:0;
+/* ── Header ─────────────────────────────────────────────────── */
+.topbar{
+  position:sticky;top:0;z-index:60;
+  background:rgba(243,241,236,.9);
+  backdrop-filter:saturate(150%) blur(12px);
+  -webkit-backdrop-filter:saturate(150%) blur(12px);
+  border-bottom:1.5px solid var(--ink);
 }
-.hero__rule{height:1.5px;background:var(--ink);margin:22px 0 15px}
-.hero__eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
-.hero__name{font-family:var(--display);font-weight:400;font-size:clamp(19px,4.6vw,29px);letter-spacing:-.02em;margin-top:7px}
-/* Same voice as the client name, a step down in size and tone so the
-   hierarchy stays clear. Width is set in px, not ch — Apfel's average
-   glyph is only .42em wide, so a ch-based column would end up narrower
-   than the name sitting above it. */
+.topbar__in{display:flex;align-items:center;justify-content:space-between;gap:16px;height:58px}
+.topbar__mark{font-family:var(--display);font-weight:400;font-size:20px;letter-spacing:-.04em;line-height:1}
+.topbar__label{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3)}
+
+/* ── Hero ───────────────────────────────────────────────────── */
+.hero{padding:34px 0 4px}
+.hero__name{
+  font-family:var(--display);font-weight:400;
+  font-size:clamp(26px,5.2vw,42px);
+  letter-spacing:-.03em;line-height:1.1;margin:0;
+}
 .hero__sub{
-  margin:13px auto 0;max-width:560px;color:var(--ink-2);
+  margin:14px 0 0;max-width:560px;color:var(--ink-2);
   font-family:var(--display);font-weight:400;
   font-size:clamp(14px,2.6vw,18px);line-height:1.3;letter-spacing:-.015em;
 }
@@ -335,9 +339,10 @@ a:hover .ext{opacity:1}
 }
 @media (max-width:760px){
   .wrap{padding:0 16px}
-  .hero{padding:22px 0 4px}
-  .hero__rule{margin:16px 0 13px}
-  .hero__sub{font-size:15px;line-height:1.3;max-width:22em}
+  .topbar__in{height:50px}
+  .topbar__mark{font-size:17px}
+  .hero{padding:24px 0 2px}
+  .hero__sub{font-size:15px;line-height:1.3;max-width:24em}
   .order__head{grid-template-columns:1fr auto;gap:14px 12px;padding:16px}
   .order__head .cell--date{grid-column:1}
   .order__head .cell--addr{grid-column:1 / -1}
@@ -354,12 +359,16 @@ a:hover .ext{opacity:1}
 </head>
 <body>
 
+<header class="topbar">
+  <div class="wrap topbar__in">
+    <div class="topbar__mark">OPENHOUSE</div>
+    <div class="topbar__label">Client Portal</div>
+  </div>
+</header>
+
 <main class="wrap">
   <section class="hero">
-    <h1 class="hero__mark">OPENHOUSE</h1>
-    <div class="hero__rule"></div>
-    <div class="hero__eyebrow">Client Portal</div>
-    <div class="hero__name" id="heroClient">&mdash;</div>
+    <h1 class="hero__name" id="heroClient">&mdash;</h1>
     <p class="hero__sub">Every order you&rsquo;ve placed with us, live. Open a row to see each colorway, its size run, tracking, and proof status.</p>
   </section>
 
@@ -410,7 +419,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p33-report-labels',
+  VERSION: 'p34-header-mark',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
