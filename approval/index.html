@@ -423,6 +423,56 @@ const MOCK = {
   status:"Completed", approvedDate:null, changeDate:null
 };
 
+/* починка битого JSON: экранирует "случайные" кавычки внутри строковых значений
+   (например дюймы в размерах: "2.92" x 0.49"" -> "2.92\" x 0.49\"") */
+function repairJson(s){
+  const TERM = new Set([',','}',']',':']);
+  let out="", inStr=false, esc=false;
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(esc){ out+=ch; esc=false; continue; }
+    if(ch==="\\"){ out+=ch; esc=true; continue; }
+    if(ch!=='"'){ out+=ch; continue; }
+    if(!inStr){ inStr=true; out+=ch; continue; }
+    let j=i+1; while(j<s.length && /\s/.test(s[j])) j++;     // закрывающая кавычка или дюймы?
+    if(j>=s.length || TERM.has(s[j])){ inStr=false; out+=ch; }
+    else { out+='\\"'; }
+  }
+  return out;
+}
+
+/* ===== терпимая обработка данных: пустые/мусорные значения и любые кавычки ===== */
+const JUNK=new Set(["","-","—","–","..",";;","|","null","undefined","n/a","na","none","tbd"]);
+function cleanStr(v){
+  if(v===null||v===undefined) return "";
+  let s=String(v).replace(/\r\n?/g,"\n").replace(/\u00a0/g," ").trim();
+  s=s.replace(/^[;,\s|]+|[;,\s|]+$/g,"").trim();            // мусорные разделители по краям (";;" и т.п.)
+  return JUNK.has(s.toLowerCase()) ? "" : s;
+}
+/* размеры: любые кавычки -> ″ / ′, разделитель -> ×, мусор -> пусто */
+function normSize(v){
+  let s=cleanStr(v); if(!s) return "";
+  s=s.replace(/[\u201C\u201D\u201E\u201F\u2033\u3003\uFF02"]/g,"\u2033");   // “ ” ″ " -> ″
+  s=s.replace(/[\u2018\u2019\u201A\u201B\u2032\uFF07']/g,"\u2032");         // ‘ ’ ′ ' -> ′
+  s=s.replace(/\u2032\u2032/g,"\u2033");                                    // ′′ -> ″
+  s=s.replace(/(\d\s*[\u2033\u2032]?)\s*[x\u00d7]\s*(?=[\d.])/gi,(m,a)=>a.trim()+" \u00d7 ");
+  s=s.replace(/\s{2,}/g," ").trim();
+  s=s.replace(/^[\u00d7x\s]+|[\u00d7x\s]+$/gi,"").trim();                   // висящий × с краю
+  return JUNK.has(s.toLowerCase()) ? "" : s;
+}
+/* приводим ответ вебхука к безопасному виду; флаги и числа не трогаем */
+const TEXT_FIELDS=["proofKind","productName","orderNo","preparedFor","date","printMethod",
+  "proofVersion","productCode","scale","measureLine","placement","clientOrderNotes",
+  "frontLabel","backLabel","colors","variantText","qtyNote","artworkSize"];
+function sanitizeProof(d){
+  if(!d || typeof d!=="object") throw new Error("bad_payload");
+  const o={...d};
+  TEXT_FIELDS.forEach(k=>{ if(k in o) o[k]=cleanStr(o[k]); });
+  o.frontSize=normSize(o.frontSize);
+  o.backSize =normSize(o.backSize);
+  return o;
+}
+
 /* ================= API ================= */
 const API = {
   async getProof(id){
@@ -434,7 +484,10 @@ const API = {
     const raw=await r.text();
     if(!raw || !raw.trim()) throw new Error("empty_response");
     try{ return JSON.parse(raw); }
-    catch(_){ return JSON.parse(raw.replace(/[\r\n\t]+/g," ")); }
+    catch(_){
+      try{ return JSON.parse(raw.replace(/[\r\n\t]+/g," ")); }
+      catch(__){ return JSON.parse(repairJson(raw)); }   // спасаем ответ с "сырыми" кавычками
+    }
   },
   async approve(id){
     if(USE_MOCK){ await wait(700); return {ok:true,date:today()}; }
@@ -1090,7 +1143,7 @@ function armReveal(){
   const id=getId();const content=document.getElementById("content");
   if(!id&&!USE_MOCK){document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>Link is missing its proof</h2>Please open the link from your email, or contact your account manager.</div>`;return;}
-  try{CURRENT=await API.getProof(id);content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();}
+  try{CURRENT=sanitizeProof(await API.getProof(id));content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();}
   catch(e){console.error("proof load failed:",e);document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>We couldn’t find this proof</h2>It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;}
 })();
