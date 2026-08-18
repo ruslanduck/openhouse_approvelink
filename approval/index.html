@@ -647,7 +647,7 @@ function renderProofCard(d){
 
   const vectorImgs = collectVectorImages(d);
   const vector = vectorImgs.length
-    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(u)}" alt="Vector artwork" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="img-missing" style="display:none">Image link expired<br>or unavailable</div>${isVendorMode()?`<button class="art-dl" type="button" title="Download artwork" aria-label="Download artwork" data-url="${esc(u)}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>`:""}</div>`).join("")
+    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(mockupSrc(u,700))}" alt="Vector artwork" loading="lazy" data-fb="${esc(u)}" onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.dataset.fb='';}else{this.style.display='none';this.nextElementSibling.style.display='flex';}"><div class="img-missing" style="display:none">Image link expired<br>or unavailable</div>${isVendorMode()?`<button class="art-dl" type="button" title="Download artwork" aria-label="Download artwork" data-url="${esc(u)}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>`:""}</div>`).join("")
     : `<div class="v-art">${artPlaceholder()}</div>`;
 
   /* --- цвета: новый формат (Design Colors) или старый --- */
@@ -860,7 +860,7 @@ async function buildVendorPdf(d){
   const { jsPDF } = window.jspdf;
   const urls=[];
   parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(mockupSrc(u,2200)));  // hi-res мокап (PDF->JPEG через wsrv)
-  collectVectorImages(d).forEach(u=>urls.push(u));                                          // артворк
+  collectVectorImages(d).forEach(u=>urls.push(mockupSrc(u,2200)));                          // артворк (.ai/PDF -> JPEG через wsrv)
   if(!urls.length) throw new Error("no images");
   const doc=new jsPDF({unit:"pt",format:"a4"});
   const pw=doc.internal.pageSize.getWidth(), ph=doc.internal.pageSize.getHeight(), m=36;
