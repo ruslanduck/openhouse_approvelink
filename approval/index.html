@@ -875,19 +875,31 @@ async function buildVendorPdf(d){
   let doc=null;
   for(const card of cards){
     await waitImages(card);
-    // запоминаем реальные размеры картинок, чтобы в снимке они не «поехали»
+    // снимаем реальную геометрию: карточка, обёртки мокапа/артворка и сами картинки
+    const cardRect=card.getBoundingClientRect();
+    const PIN=".mockup-photos,.mockup-photo,.v-art,.v-arts,.vector,.mock-fallback,.mockup";
+    const boxes=[...card.querySelectorAll(PIN)].map(el=>{const r=el.getBoundingClientRect();return {w:r.width,h:r.height};});
     const rects=[...card.querySelectorAll("img")].map(im=>{const r=im.getBoundingClientRect();return {w:r.width,h:r.height};});
     const canvas=await html2canvas(card,{
       scale: Math.min(3, Math.max(2, (window.devicePixelRatio||1)*2)),  // ретина-качество
       useCORS:true, backgroundColor:"#FFFFFF", logging:false,
+      width: Math.ceil(cardRect.width), windowWidth: Math.ceil(cardRect.width),
       onclone:(doc2, el2)=>{
         const root=el2||doc2;
         root.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());          // убираем кнопки скачивания
         root.querySelectorAll(".reveal").forEach(el=>{el.style.opacity=1;el.style.transform="none";});
+        // ширина карточки 1:1, чтобы вёрстка не пересобралась под другую ширину окна
+        const rootEl = el2 || doc2.querySelector(".proof");
+        if(rootEl){ rootEl.style.width=cardRect.width+"px"; rootEl.style.maxWidth="none"; }
+        [...root.querySelectorAll(PIN)].forEach((el,i)=>{                          // фиксируем обёртки
+          const b=boxes[i]; if(!b||!b.w) return;
+          el.style.width=b.w+"px"; el.style.maxWidth="none"; el.style.flex="0 0 auto";
+          if(b.h) el.style.height=b.h+"px";
+        });
         [...root.querySelectorAll("img")].forEach((im,i)=>{                        // жёстко фиксируем габариты 1:1
           const r=rects[i]; if(!r||!r.w||!r.h) return;
-          im.style.width=r.w+"px"; im.style.height=r.h+"px";
-          im.style.maxWidth="none"; im.style.maxHeight="none"; im.style.objectFit="contain";
+          im.setAttribute("width",Math.round(r.w)); im.setAttribute("height",Math.round(r.h));
+          im.style.cssText+=`;width:${r.w}px;height:${r.h}px;max-width:none;max-height:none;min-width:0;flex:none;object-fit:contain;display:block;`;
         });
       }
     });
