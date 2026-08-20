@@ -298,6 +298,7 @@
     .sf-inner{flex-direction:column;gap:18px}
   }
 </style>  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -808,7 +809,7 @@ function renderProof(d){
   const orig   = d.mockupHighUrl || d.mockupHigh;      // оригинальный файл (PDF/картинка) для hi-res
   const source = orig || d.mockupUrl;                  // если оригинала нет — старое поведение
   const kind   = vendor ? "VENDOR PROOF" : (d.proofKind || "CLIENT PROOF");
-  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? 2200 : 1400 };
+  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? 2800 : 1400 };
   const mockups = parseImageUrls(source);
   if (!mockups || mockups.length === 0) {
     return `<div class="proof-wrap">${renderProofCard(dd)}</div>`;
@@ -855,12 +856,47 @@ async function loadImageData(url){
   try{ return await attempt(url); }
   catch(e){ return await attempt("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,"")); }
 }
+/* дожидаемся полной загрузки всех картинок внутри узла (иначе в PDF попадут пустые места) */
+function waitImages(root){
+  const imgs=[...root.querySelectorAll("img")];
+  return Promise.all(imgs.map(im=>im.complete&&im.naturalWidth
+    ? Promise.resolve()
+    : new Promise(res=>{ im.addEventListener("load",res,{once:true}); im.addEventListener("error",res,{once:true}); setTimeout(res,12000); })
+  ));
+}
+
+/* СНИМОК ВСЕЙ КАРТОЧКИ ПРУФА -> PDF (каждая карточка = отдельная страница) */
 async function buildVendorPdf(d){
   if(!window.jspdf) throw new Error("jsPDF not loaded");
   const { jsPDF } = window.jspdf;
+  const cards=[...document.querySelectorAll(".proof")];
+  if(!cards.length || !window.html2canvas) return buildVendorPdfImagesOnly(d);   // запасной путь
+
+  let doc=null;
+  for(const card of cards){
+    await waitImages(card);
+    const canvas=await html2canvas(card,{
+      scale: Math.min(3, Math.max(2, (window.devicePixelRatio||1)*2)),  // ретина-качество
+      useCORS:true, backgroundColor:"#FFFFFF", logging:false,
+      windowWidth: document.documentElement.scrollWidth,
+      onclone:(doc2)=>{ doc2.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());   // убираем кнопки скачивания
+                        doc2.querySelectorAll(".reveal").forEach(el=>{el.style.opacity=1;el.style.transform="none";}); }
+    });
+    const w=canvas.width, h=canvas.height;
+    if(!doc) doc=new jsPDF({unit:"pt",format:[w,h],orientation:w>h?"landscape":"portrait"});
+    else doc.addPage([w,h], w>h?"landscape":"portrait");
+    doc.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",0,0,w,h,undefined,"FAST");
+  }
+  const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
+  doc.save(`${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf`);
+}
+
+/* запасной вариант: только картинки (если html2canvas недоступен) */
+async function buildVendorPdfImagesOnly(d){
+  const { jsPDF } = window.jspdf;
   const urls=[];
-  parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(mockupSrc(u,2200)));  // hi-res мокап (PDF->JPEG через wsrv)
-  collectVectorImages(d).forEach(u=>urls.push(mockupSrc(u,2200)));                          // артворк (.ai/PDF -> JPEG через wsrv)
+  parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(mockupSrc(u,2200)));
+  collectVectorImages(d).forEach(u=>urls.push(mockupSrc(u,2200)));
   if(!urls.length) throw new Error("no images");
   const doc=new jsPDF({unit:"pt",format:"a4"});
   const pw=doc.internal.pageSize.getWidth(), ph=doc.internal.pageSize.getHeight(), m=36;
@@ -868,8 +904,7 @@ async function buildVendorPdf(d){
   for(const u of urls){
     let im; try{ im=await loadImageData(u); }catch(e){ continue; }
     if(placed>0) doc.addPage();
-    const maxW=pw-m*2, maxH=ph-m*2, r=Math.min(maxW/im.w, maxH/im.h);
-    const w=im.w*r, h=im.h*r;
+    const r=Math.min((pw-m*2)/im.w,(ph-m*2)/im.h), w=im.w*r, h=im.h*r;
     doc.addImage(im.data,"JPEG",(pw-w)/2,(ph-h)/2,w,h);
     placed++;
   }
