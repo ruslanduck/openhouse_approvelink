@@ -856,20 +856,19 @@ async function loadImageData(url){
   try{ return await attempt(url); }
   catch(e){ return await attempt("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,"")); }
 }
-/* сохранение PDF с запасными путями (iOS / встроенные браузеры блокируют обычный save) */
+/* сохранение PDF: тот же способ, что и для артворка (ссылка с download) —
+   на iOS показывает родной диалог «Download», а не открывает blob-страницу */
 function savePdf(doc, filename){
-  try{ doc.save(filename); return "saved"; }catch(e){}
   let blob; try{ blob=doc.output("blob"); }catch(e){ throw new Error("pdf_output_failed"); }
   const url=URL.createObjectURL(blob);
-  try{                                                   // 1) обычная ссылка со скачиванием
+  try{
     const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),20000); return "anchor";
   }catch(e){}
-  const w=window.open(url,"_blank");                     // 2) открыть в новой вкладке
-  if(w) return "window";
-  window.location.href=url;                              // 3) открыть прямо здесь (iOS покажет PDF)
-  return "location";
+  try{ doc.save(filename); URL.revokeObjectURL(url); return "saved"; }catch(e){}   // запасной путь jsPDF
+  const w=window.open(url,"_blank"); if(w) return "window";
+  window.location.href=url; return "location";
 }
 
 /* дожидаемся полной загрузки всех картинок внутри узла (иначе в PDF попадут пустые места) */
