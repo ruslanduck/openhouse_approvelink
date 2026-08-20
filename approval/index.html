@@ -856,6 +856,22 @@ async function loadImageData(url){
   try{ return await attempt(url); }
   catch(e){ return await attempt("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,"")); }
 }
+/* сохранение PDF с запасными путями (iOS / встроенные браузеры блокируют обычный save) */
+function savePdf(doc, filename){
+  try{ doc.save(filename); return "saved"; }catch(e){}
+  let blob; try{ blob=doc.output("blob"); }catch(e){ throw new Error("pdf_output_failed"); }
+  const url=URL.createObjectURL(blob);
+  try{                                                   // 1) обычная ссылка со скачиванием
+    const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),20000); return "anchor";
+  }catch(e){}
+  const w=window.open(url,"_blank");                     // 2) открыть в новой вкладке
+  if(w) return "window";
+  window.location.href=url;                              // 3) открыть прямо здесь (iOS покажет PDF)
+  return "location";
+}
+
 /* дожидаемся полной загрузки всех картинок внутри узла (иначе в PDF попадут пустые места) */
 function waitImages(root){
   const imgs=[...root.querySelectorAll("img")];
@@ -879,7 +895,15 @@ async function buildVendorPdf(d){
     const cardRect=card.getBoundingClientRect();
     const PIN=".mockup-photos,.mockup-photo,.v-art,.v-arts,.vector,.mock-fallback,.mockup";
     const boxes=[...card.querySelectorAll(PIN)].map(el=>{const r=el.getBoundingClientRect();return {w:r.width,h:r.height};});
-    const rects=[...card.querySelectorAll("img")].map(im=>{const r=im.getBoundingClientRect();return {w:r.width,h:r.height};});
+    // габариты картинок: считаем РЕАЛЬНО видимый размер (как object-fit:contain),
+    // т.к. html2canvas не поддерживает object-fit и растянул бы картинку на весь бокс
+    const rects=[...card.querySelectorAll("img")].map(im=>{
+      const r=im.getBoundingClientRect();
+      const nw=im.naturalWidth||r.width, nh=im.naturalHeight||r.height;
+      if(!nw||!nh||!r.width||!r.height) return {w:r.width,h:r.height};
+      const s=Math.min(r.width/nw, r.height/nh);            // вписываем, как contain
+      return {w:Math.round(nw*s), h:Math.round(nh*s)};
+    });
     const canvas=await html2canvas(card,{
       scale: Math.min(3, Math.max(2, (window.devicePixelRatio||1)*2)),  // ретина-качество
       useCORS:true, backgroundColor:"#FFFFFF", logging:false,
@@ -894,12 +918,12 @@ async function buildVendorPdf(d){
         [...root.querySelectorAll(PIN)].forEach((el,i)=>{                          // фиксируем обёртки
           const b=boxes[i]; if(!b||!b.w) return;
           el.style.width=b.w+"px"; el.style.maxWidth="none"; el.style.flex="0 0 auto";
-          if(b.h) el.style.height=b.h+"px";
+          el.style.height="auto";                                                  // высота — по содержимому
         });
-        [...root.querySelectorAll("img")].forEach((im,i)=>{                        // жёстко фиксируем габариты 1:1
+        [...root.querySelectorAll("img")].forEach((im,i)=>{                        // ставим точный видимый размер 1:1
           const r=rects[i]; if(!r||!r.w||!r.h) return;
           im.setAttribute("width",Math.round(r.w)); im.setAttribute("height",Math.round(r.h));
-          im.style.cssText+=`;width:${r.w}px;height:${r.h}px;max-width:none;max-height:none;min-width:0;flex:none;object-fit:contain;display:block;`;
+          im.style.cssText+=`;width:${r.w}px;height:${r.h}px;max-width:none;max-height:none;min-width:0;flex:none;object-fit:fill;display:block;margin-left:auto;margin-right:auto;`;
         });
       }
     });
@@ -909,7 +933,7 @@ async function buildVendorPdf(d){
     doc.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",0,0,w,h,undefined,"FAST");
   }
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
-  doc.save(`${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf`);
+  savePdf(doc, `${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf`);
 }
 
 /* запасной вариант: только картинки (если html2canvas недоступен) */
@@ -931,7 +955,7 @@ async function buildVendorPdfImagesOnly(d){
   }
   if(!placed) throw new Error("all images failed");
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
-  doc.save(`${safe(d.orderNo)||"proof"}_${safe(d.productName)}_proof.pdf`);
+  savePdf(doc, `${safe(d.orderNo)||"proof"}_${safe(d.productName)}_proof.pdf`);
 }
 
 function renderDecision(d){
@@ -1139,7 +1163,7 @@ document.addEventListener("click",async e=>{
   const label=btn.querySelector("span"), orig=label?label.textContent:"";
   btn.disabled=true; if(label) label.textContent="Preparing…";
   try{ await buildVendorPdf(CURRENT); }
-  catch(err){ alert("Sorry, the PDF could not be generated. Please try again."); }
+  catch(err){ alert("Sorry, the PDF could not be generated.\n\n"+(err&&err.message?err.message:err)+"\n\nIf you're in an in-app browser (Instagram, Telegram, etc.), please open this link in Safari or Chrome."); }
   finally{ btn.disabled=false; if(label) label.textContent=orig; }
 });
 
