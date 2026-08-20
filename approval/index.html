@@ -809,8 +809,7 @@ function renderProof(d){
   const orig   = d.mockupHighUrl || d.mockupHigh;      // оригинальный файл (PDF/картинка) для hi-res
   const source = orig || d.mockupUrl;                  // если оригинала нет — старое поведение
   const kind   = vendor ? "VENDOR PROOF" : (d.proofKind || "CLIENT PROOF");
-  const small  = Math.min(window.innerWidth||1200, window.innerHeight||900) < 700;
-  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? (small?1600:2800) : 1400 };
+  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? 2800 : 1400 };
   const mockups = parseImageUrls(source);
   if (!mockups || mockups.length === 0) {
     return `<div class="proof-wrap">${renderProofCard(dd)}</div>`;
@@ -881,79 +880,55 @@ function waitImages(root){
   ));
 }
 
-/* СНИМОК ВСЕЙ КАРТОЧКИ ПРУФА -> PDF (каждая карточка = отдельная страница) */
+/* СНИМОК ВСЕЙ КАРТОЧКИ ПРУФА -> PDF
+   Снимаем ВСЕГДА в десктопной ширине, поэтому PDF одинаковый и с компьютера, и с телефона. */
+const PDF_WIDTH = 1280;   // ширина макета для снимка
+
 async function buildVendorPdf(d){
   if(!window.jspdf) throw new Error("jsPDF not loaded");
   const { jsPDF } = window.jspdf;
   const cards=[...document.querySelectorAll(".proof")];
-  if(!cards.length || !window.html2canvas) return buildVendorPdfImagesOnly(d);   // запасной путь
-
-  const isMobile = Math.min(window.innerWidth, window.innerHeight) < 700 ||
-                   /iP(hone|od)|Android/i.test(navigator.userAgent);
-  const CAPTURE_BUDGET = isMobile ? 40000 : 120000;   // на телефоне ждём недолго и уходим в запасной путь
+  if(!cards.length || !window.html2canvas) return buildVendorPdfImagesOnly(d);
 
   let doc=null;
   for(const card of cards){
     await waitImages(card);
-    // снимаем реальную геометрию: карточка, обёртки мокапа/артворка и сами картинки
-    const cardRect=card.getBoundingClientRect();
-    const PIN=".mockup-photos,.mockup-photo,.v-art,.v-arts,.vector,.mock-fallback,.mockup";
-    const boxes=[...card.querySelectorAll(PIN)].map(el=>{const r=el.getBoundingClientRect();return {w:r.width,h:r.height};});
-    // габариты картинок: считаем РЕАЛЬНО видимый размер (как object-fit:contain),
-    // т.к. html2canvas не поддерживает object-fit и растянул бы картинку на весь бокс
-    const rects=[...card.querySelectorAll("img")].map(im=>{
-      const r=im.getBoundingClientRect();
-      const nw=im.naturalWidth||r.width, nh=im.naturalHeight||r.height;
-      if(!nw||!nh||!r.width||!r.height) return {w:r.width,h:r.height};
-      const s=Math.min(r.width/nw, r.height/nh);            // вписываем, как contain
-      return {w:Math.round(nw*s), h:Math.round(nh*s)};
-    });
-    // масштаб съёмки ограничиваем возможностями устройства:
-    // iOS/Safari не создаёт холсты больше ~4096px по стороне и ~16.7 Мпикс по площади,
-    // десктопные браузеры выдерживают заметно больше — там качество не режем
-    const cw=Math.ceil(cardRect.width), chh=Math.ceil(card.scrollHeight||cardRect.height);
+    // высоту оцениваем по десктопной ширине; лимиты холста строже всего на iOS
     const iOS=/iP(hone|ad|od)/.test(navigator.userAgent) ||
               (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
     const MAXDIM = iOS?4096:16384, MAXAREA = (iOS?16.7:96)*1024*1024;
+    const estH = Math.max(1400, Math.round(card.scrollHeight * (PDF_WIDTH/Math.max(1,card.getBoundingClientRect().width))));
     let scale=Math.min(3, Math.max(2,(window.devicePixelRatio||1)*2));
-    if(isMobile) scale=1;                                        // на телефоне съёмка тяжёлая — не увеличиваем
-    scale=Math.min(scale, MAXDIM/Math.max(cw,chh), Math.sqrt(MAXAREA/(cw*chh)));
+    scale=Math.min(scale, MAXDIM/Math.max(PDF_WIDTH,estH), Math.sqrt(MAXAREA/(PDF_WIDTH*estH)));
     scale=Math.max(1, scale);
+
     let canvas;
     try{
       canvas=await Promise.race([
         html2canvas(card,{
-          scale,
-          useCORS:true, backgroundColor:"#FFFFFF", logging:false, imageTimeout:20000,
-          width: cw, windowWidth: cw,
-      onclone:(doc2, el2)=>{
-        const root=el2||doc2;
-        root.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());          // убираем кнопки скачивания
-        root.querySelectorAll(".reveal").forEach(el=>{el.style.opacity=1;el.style.transform="none";});
-        // ширина карточки 1:1, чтобы вёрстка не пересобралась под другую ширину окна
-        const rootEl = el2 || doc2.querySelector(".proof");
-        if(rootEl){ rootEl.style.width=cardRect.width+"px"; rootEl.style.maxWidth="none"; }
-        [...root.querySelectorAll(PIN)].forEach((el,i)=>{                          // фиксируем обёртки
-          const b=boxes[i]; if(!b||!b.w) return;
-          el.style.width=b.w+"px"; el.style.maxWidth="none"; el.style.flex="0 0 auto";
-          el.style.height="auto";                                                  // высота — по содержимому
-        });
-        [...root.querySelectorAll("img")].forEach((im,i)=>{                        // ставим точный видимый размер 1:1
-          const r=rects[i]; if(!r||!r.w||!r.h) return;
-          im.setAttribute("width",Math.round(r.w)); im.setAttribute("height",Math.round(r.h));
-          im.style.cssText+=`;width:${r.w}px;height:${r.h}px;max-width:none;max-height:none;min-width:0;flex:none;object-fit:fill;display:block;margin-left:auto;margin-right:auto;`;
-        });
-      }
+          scale, useCORS:true, backgroundColor:"#FFFFFF", logging:false, imageTimeout:20000,
+          width: PDF_WIDTH, windowWidth: PDF_WIDTH,   // десктопная вёрстка на любом устройстве
+          onclone:(doc2, el2)=>{
+            const root = el2 || doc2.querySelector(".proof");
+            const scope = el2 || doc2;
+            scope.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());
+            scope.querySelectorAll(".reveal").forEach(el=>{el.style.opacity=1;el.style.transform="none";});
+            if(root){ root.style.width=PDF_WIDTH+"px"; root.style.maxWidth="none"; }
+            // html2canvas не умеет object-fit: убираем ограничение высоты, тогда
+            // картинка рисуется в своих пропорциях и её нечем растянуть
+            scope.querySelectorAll(".mockup-photo>img,.v-art img").forEach(im=>{
+              im.style.maxHeight="none"; im.style.height="auto"; im.style.objectFit="fill";
+            });
+          }
         }),
-        new Promise((_,rej)=>setTimeout(()=>rej(new Error("capture_slow")),CAPTURE_BUDGET))
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error("capture_slow")),120000))
       ]);
-    }catch(err){
-      return buildVendorPdfImagesOnly(d);          // съёмка не успела/сорвалась -> быстрый PDF из картинок
-    }
+    }catch(err){ return buildVendorPdfImagesOnly(d); }
+
     const w=canvas.width, h=canvas.height;
-    if(!w||!h) throw new Error("canvas_empty");
-    let dataUrl; try{ dataUrl=canvas.toDataURL("image/jpeg",0.95); }catch(err){ throw new Error("canvas_export_failed"); }
-    if(!dataUrl||dataUrl.length<2000) return buildVendorPdfImagesOnly(d);   // снимок не удался -> запасной путь
+    if(!w||!h) return buildVendorPdfImagesOnly(d);
+    let dataUrl; try{ dataUrl=canvas.toDataURL("image/jpeg",0.95); }catch(err){ return buildVendorPdfImagesOnly(d); }
+    if(!dataUrl||dataUrl.length<2000) return buildVendorPdfImagesOnly(d);
     if(!doc) doc=new jsPDF({unit:"pt",format:[w,h],orientation:w>h?"landscape":"portrait"});
     else doc.addPage([w,h], w>h?"landscape":"portrait");
     doc.addImage(dataUrl,"JPEG",0,0,w,h,undefined,"FAST");
