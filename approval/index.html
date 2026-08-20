@@ -875,12 +875,21 @@ async function buildVendorPdf(d){
   let doc=null;
   for(const card of cards){
     await waitImages(card);
+    // запоминаем реальные размеры картинок, чтобы в снимке они не «поехали»
+    const rects=[...card.querySelectorAll("img")].map(im=>{const r=im.getBoundingClientRect();return {w:r.width,h:r.height};});
     const canvas=await html2canvas(card,{
       scale: Math.min(3, Math.max(2, (window.devicePixelRatio||1)*2)),  // ретина-качество
       useCORS:true, backgroundColor:"#FFFFFF", logging:false,
-      windowWidth: document.documentElement.scrollWidth,
-      onclone:(doc2)=>{ doc2.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());   // убираем кнопки скачивания
-                        doc2.querySelectorAll(".reveal").forEach(el=>{el.style.opacity=1;el.style.transform="none";}); }
+      onclone:(doc2, el2)=>{
+        const root=el2||doc2;
+        root.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());          // убираем кнопки скачивания
+        root.querySelectorAll(".reveal").forEach(el=>{el.style.opacity=1;el.style.transform="none";});
+        [...root.querySelectorAll("img")].forEach((im,i)=>{                        // жёстко фиксируем габариты 1:1
+          const r=rects[i]; if(!r||!r.w||!r.h) return;
+          im.style.width=r.w+"px"; im.style.height=r.h+"px";
+          im.style.maxWidth="none"; im.style.maxHeight="none"; im.style.objectFit="contain";
+        });
+      }
     });
     const w=canvas.width, h=canvas.height;
     if(!doc) doc=new jsPDF({unit:"pt",format:[w,h],orientation:w>h?"landscape":"portrait"});
