@@ -904,10 +904,20 @@ async function buildVendorPdf(d){
       const s=Math.min(r.width/nw, r.height/nh);            // вписываем, как contain
       return {w:Math.round(nw*s), h:Math.round(nh*s)};
     });
+    // масштаб съёмки ограничиваем возможностями устройства:
+    // iOS/Safari не создаёт холсты больше ~4096px по стороне и ~16.7 Мпикс по площади,
+    // десктопные браузеры выдерживают заметно больше — там качество не режем
+    const cw=Math.ceil(cardRect.width), chh=Math.ceil(card.scrollHeight||cardRect.height);
+    const iOS=/iP(hone|ad|od)/.test(navigator.userAgent) ||
+              (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
+    const MAXDIM = iOS?4096:16384, MAXAREA = (iOS?16.7:96)*1024*1024;
+    let scale=Math.min(3, Math.max(2,(window.devicePixelRatio||1)*2));
+    scale=Math.min(scale, MAXDIM/Math.max(cw,chh), Math.sqrt(MAXAREA/(cw*chh)));
+    scale=Math.max(1, scale);
     const canvas=await html2canvas(card,{
-      scale: Math.min(3, Math.max(2, (window.devicePixelRatio||1)*2)),  // ретина-качество
+      scale,
       useCORS:true, backgroundColor:"#FFFFFF", logging:false,
-      width: Math.ceil(cardRect.width), windowWidth: Math.ceil(cardRect.width),
+      width: cw, windowWidth: cw,
       onclone:(doc2, el2)=>{
         const root=el2||doc2;
         root.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());          // убираем кнопки скачивания
@@ -928,9 +938,12 @@ async function buildVendorPdf(d){
       }
     });
     const w=canvas.width, h=canvas.height;
+    if(!w||!h) throw new Error("canvas_empty");
+    let dataUrl; try{ dataUrl=canvas.toDataURL("image/jpeg",0.95); }catch(err){ throw new Error("canvas_export_failed"); }
+    if(!dataUrl||dataUrl.length<2000) return buildVendorPdfImagesOnly(d);   // снимок не удался -> запасной путь
     if(!doc) doc=new jsPDF({unit:"pt",format:[w,h],orientation:w>h?"landscape":"portrait"});
     else doc.addPage([w,h], w>h?"landscape":"portrait");
-    doc.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",0,0,w,h,undefined,"FAST");
+    doc.addImage(dataUrl,"JPEG",0,0,w,h,undefined,"FAST");
   }
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
   savePdf(doc, `${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf`);
@@ -1160,11 +1173,17 @@ async function downloadImageFile(url, filename){
 document.addEventListener("click",async e=>{
   const btn=e.target.closest(".pdf-dl"); if(!btn) return;
   if(btn.disabled) return;
-  const label=btn.querySelector("span"), orig=label?label.textContent:"";
-  btn.disabled=true; if(label) label.textContent="Preparing…";
-  try{ await buildVendorPdf(CURRENT); }
+  const label=btn.querySelector("span"), orig=label?label.textContent:"", origDisp=label?label.style.display:"";
+  btn.disabled=true;
+  if(label){ label.style.display="inline"; label.textContent="Preparing…"; }   // на мобильном текст скрыт CSS — показываем
+  try{
+    await Promise.race([
+      buildVendorPdf(CURRENT),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout: PDF took too long")),90000))
+    ]);
+  }
   catch(err){ alert("Sorry, the PDF could not be generated.\n\n"+(err&&err.message?err.message:err)+"\n\nIf you're in an in-app browser (Instagram, Telegram, etc.), please open this link in Safari or Chrome."); }
-  finally{ btn.disabled=false; if(label) label.textContent=orig; }
+  finally{ btn.disabled=false; if(label){ label.textContent=orig; label.style.display=origDisp; } }
 });
 
 // клик по иконке скачивания на вектор-артворке (вендор-пруф)
