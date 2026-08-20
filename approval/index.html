@@ -809,7 +809,8 @@ function renderProof(d){
   const orig   = d.mockupHighUrl || d.mockupHigh;      // оригинальный файл (PDF/картинка) для hi-res
   const source = orig || d.mockupUrl;                  // если оригинала нет — старое поведение
   const kind   = vendor ? "VENDOR PROOF" : (d.proofKind || "CLIENT PROOF");
-  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? 2800 : 1400 };
+  const small  = Math.min(window.innerWidth||1200, window.innerHeight||900) < 700;
+  const dd     = { ...d, _proofKind: kind, _thumb: d.mockupUrl || "", _mockW: vendor ? (small?1600:2800) : 1400 };
   const mockups = parseImageUrls(source);
   if (!mockups || mockups.length === 0) {
     return `<div class="proof-wrap">${renderProofCard(dd)}</div>`;
@@ -887,6 +888,10 @@ async function buildVendorPdf(d){
   const cards=[...document.querySelectorAll(".proof")];
   if(!cards.length || !window.html2canvas) return buildVendorPdfImagesOnly(d);   // запасной путь
 
+  const isMobile = Math.min(window.innerWidth, window.innerHeight) < 700 ||
+                   /iP(hone|od)|Android/i.test(navigator.userAgent);
+  const CAPTURE_BUDGET = isMobile ? 40000 : 120000;   // на телефоне ждём недолго и уходим в запасной путь
+
   let doc=null;
   for(const card of cards){
     await waitImages(card);
@@ -911,12 +916,16 @@ async function buildVendorPdf(d){
               (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
     const MAXDIM = iOS?4096:16384, MAXAREA = (iOS?16.7:96)*1024*1024;
     let scale=Math.min(3, Math.max(2,(window.devicePixelRatio||1)*2));
+    if(isMobile) scale=1;                                        // на телефоне съёмка тяжёлая — не увеличиваем
     scale=Math.min(scale, MAXDIM/Math.max(cw,chh), Math.sqrt(MAXAREA/(cw*chh)));
     scale=Math.max(1, scale);
-    const canvas=await html2canvas(card,{
-      scale,
-      useCORS:true, backgroundColor:"#FFFFFF", logging:false,
-      width: cw, windowWidth: cw,
+    let canvas;
+    try{
+      canvas=await Promise.race([
+        html2canvas(card,{
+          scale,
+          useCORS:true, backgroundColor:"#FFFFFF", logging:false, imageTimeout:20000,
+          width: cw, windowWidth: cw,
       onclone:(doc2, el2)=>{
         const root=el2||doc2;
         root.querySelectorAll(".pdf-dl,.art-dl").forEach(b=>b.remove());          // убираем кнопки скачивания
@@ -935,7 +944,12 @@ async function buildVendorPdf(d){
           im.style.cssText+=`;width:${r.w}px;height:${r.h}px;max-width:none;max-height:none;min-width:0;flex:none;object-fit:fill;display:block;margin-left:auto;margin-right:auto;`;
         });
       }
-    });
+        }),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error("capture_slow")),CAPTURE_BUDGET))
+      ]);
+    }catch(err){
+      return buildVendorPdfImagesOnly(d);          // съёмка не успела/сорвалась -> быстрый PDF из картинок
+    }
     const w=canvas.width, h=canvas.height;
     if(!w||!h) throw new Error("canvas_empty");
     let dataUrl; try{ dataUrl=canvas.toDataURL("image/jpeg",0.95); }catch(err){ throw new Error("canvas_export_failed"); }
@@ -1178,7 +1192,7 @@ document.addEventListener("click",async e=>{
   try{
     await Promise.race([
       buildVendorPdf(CURRENT),
-      new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout: PDF took too long")),90000))
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout: PDF took too long")),180000))
     ]);
   }
   catch(err){ alert("Sorry, the PDF could not be generated.\n\n"+(err&&err.message?err.message:err)+"\n\nIf you're in an in-app browser (Instagram, Telegram, etc.), please open this link in Safari or Chrome."); }
