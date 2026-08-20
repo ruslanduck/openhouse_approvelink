@@ -856,21 +856,6 @@ async function loadImageData(url){
   try{ return await attempt(url); }
   catch(e){ return await attempt("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,"")); }
 }
-/* сохранение PDF: тот же способ, что и для артворка (ссылка с download) —
-   на iOS показывает родной диалог «Download», а не открывает blob-страницу */
-function savePdf(doc, filename){
-  let blob; try{ blob=doc.output("blob"); }catch(e){ throw new Error("pdf_output_failed"); }
-  const url=URL.createObjectURL(blob);
-  try{
-    const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),20000); return "anchor";
-  }catch(e){}
-  try{ doc.save(filename); URL.revokeObjectURL(url); return "saved"; }catch(e){}   // запасной путь jsPDF
-  const w=window.open(url,"_blank"); if(w) return "window";
-  window.location.href=url; return "location";
-}
-
 /* дожидаемся полной загрузки всех картинок внутри узла (иначе в PDF попадут пустые места) */
 function waitImages(root){
   const imgs=[...root.querySelectorAll("img")];
@@ -934,7 +919,7 @@ async function buildVendorPdf(d){
     doc.addImage(dataUrl,"JPEG",0,0,w,h,undefined,"FAST");
   }
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
-  savePdf(doc, `${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf`);
+  return { doc, filename: `${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf` };
 }
 
 /* запасной вариант: только картинки (если html2canvas недоступен) */
@@ -956,7 +941,7 @@ async function buildVendorPdfImagesOnly(d){
   }
   if(!placed) throw new Error("all images failed");
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
-  savePdf(doc, `${safe(d.orderNo)||"proof"}_${safe(d.productName)}_proof.pdf`);
+  return { doc, filename: `${safe(d.orderNo)||"proof"}_${safe(d.productName)}_proof.pdf` };
 }
 
 function renderDecision(d){
@@ -1161,17 +1146,42 @@ async function downloadImageFile(url, filename){
 document.addEventListener("click",async e=>{
   const btn=e.target.closest(".pdf-dl"); if(!btn) return;
   if(btn.disabled) return;
-  const label=btn.querySelector("span"), orig=label?label.textContent:"", origDisp=label?label.style.display:"";
-  btn.disabled=true;
-  if(label){ label.style.display="inline"; label.textContent="Preparing…"; }   // на мобильном текст скрыт CSS — показываем
+  const label=btn.querySelector("span"), origDisp=label?label.style.display:"";
+  const setLabel=t=>{ if(label){ label.style.display="inline"; label.textContent=t; } };
+
+  // второй тап: файл уже готов — сохраняем сразу, внутри «свежего» жеста (нужно для iOS)
+  if(btn.dataset.ready){
+    const a=document.createElement("a"); a.href=btn.dataset.ready; a.download=btn.dataset.filename||"proof.pdf";
+    document.body.appendChild(a); a.click(); a.remove();
+    setLabel("Download PDF"); if(label) label.style.display=origDisp;
+    delete btn.dataset.ready; delete btn.dataset.filename;
+    return;
+  }
+
+  const iOS=/iP(hone|ad|od)/.test(navigator.userAgent) ||
+            (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
+  btn.disabled=true; setLabel("Preparing…");
   try{
-    await Promise.race([
+    const res=await Promise.race([
       buildVendorPdf(CURRENT),
       new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout: PDF took too long")),180000))
     ]);
+    const blob=res.doc.output("blob"), url=URL.createObjectURL(blob);
+    if(iOS){                                   // на iOS жест уже «остыл» — просим тапнуть ещё раз
+      btn.dataset.ready=url; btn.dataset.filename=res.filename;
+      setLabel("Save PDF"); setTimeout(()=>URL.revokeObjectURL(url),300000);
+    }else{
+      const a=document.createElement("a"); a.href=url; a.download=res.filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),20000);
+      setLabel("Download PDF"); if(label) label.style.display=origDisp;
+    }
   }
-  catch(err){ alert("Sorry, the PDF could not be generated.\n\n"+(err&&err.message?err.message:err)+"\n\nIf you're in an in-app browser (Instagram, Telegram, etc.), please open this link in Safari or Chrome."); }
-  finally{ btn.disabled=false; if(label){ label.textContent=orig; label.style.display=origDisp; } }
+  catch(err){
+    alert("Sorry, the PDF could not be generated.\n\n"+(err&&err.message?err.message:err)+"\n\nIf you're in an in-app browser (Instagram, Telegram, etc.), please open this link in Safari or Chrome.");
+    setLabel("Download PDF"); if(label) label.style.display=origDisp;
+  }
+  finally{ btn.disabled=false; }
 });
 
 // клик по иконке скачивания на вектор-артворке (вендор-пруф)
