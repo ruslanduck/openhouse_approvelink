@@ -419,7 +419,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p37-doc-or-link',
+  VERSION: 'p39-no-dup-date',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -1012,12 +1012,14 @@ function groupByColorway(items){
    ══════════════════════════════════════════════════════════════ */
 let STATE = {orders: [], filter: 'all', query: ''};
 
-function proofChip(p, title, tag, showLink){
+function proofChip(p, title, tag, showLink, skipDate){
   const st = proofState(p);
   if(!st && !(p.url && showLink !== false)) return '';
   const label = st ? st.label : 'Proof available';
   const cls   = st ? st.cls : '';
-  const when  = p.sig && p.approvedAt ? fmtDate(p.approvedAt)
+  /* The card already prints "Approved <date>" from the line item. Repeating
+     the same date on the chip below is noise, so drop it when they match. */
+  const when  = p.sig && p.approvedAt ? (skipDate ? '' : fmtDate(p.approvedAt))
               : (!p.sig && p.sentAt ? 'Sent ' + fmtDate(p.sentAt) : '');
   const ver   = p.version ? `<span class="proof__label">V${esc(p.version)}</span>` : '';
   const mark  = tag ? `<span class="proof__tag">${esc(tag)}</span>` : '';
@@ -1050,12 +1052,14 @@ function proofView(g){
     const tags = many ? proofTags(g.proofs) : g.proofs.map(() => '');
     /* If a signed document is on the card, the link is redundant — unless the
        record says the proof was actually sent as a link. */
-    const hasDoc = !!documentOf(g);
+    const showLink = linkDelivered(g) || !documentOf(g);
+    const sameDay = d => d && fmtDate(d) === fmtDate(g.approvalDate);
     const body = g.proofs.map((p, i) => proofChip(
       p,
       g.product + (g.color ? ' — ' + g.color : '') + (tags[i] ? ' — ' + tags[i] : ''),
       tags[i],
-      !hasDoc || p.sentAsLink || g.sentAsLink
+      showLink,
+      sameDay(p.approvedAt)
     )).join('');
     return many
       ? `<div class="proofset"><div class="proofset__h">${g.proofs.length} proofs for this product</div>${body}</div>`
@@ -1069,7 +1073,7 @@ function proofView(g){
     status: st, sig: /approv/i.test(st), rejected: /change|reject|declin/i.test(st),
     reason: g.proofComment, note: g.proofComment, approvedAt: g.proofDate,
     sentAt: g.proofDate, version: '', url: link
-  }, g.product, '', !documentOf(g) || g.sentAsLink);
+  }, g.product, '', linkDelivered(g) || !documentOf(g));
 }
 
 /* Proofs that name a product not present as a card — listed under the order. */
@@ -1098,8 +1102,18 @@ function orderProofsView(o){
    link to the approval page. Showing both is wrong — and when the fallback
    used proof_url it printed the very same link twice, once as "Document" and
    once as "View proof". So Document means a file, nothing else. */
+/* True when the record says this proof reached the client as a link. */
+function linkDelivered(g){
+  return !!(g.sentAsLink || (g.proofs || []).some(p => p.sentAsLink));
+}
+
+/* Exactly one of the two is ever shown:
+     link delivered  -> the link, no document row
+     file on record  -> the document, no link
+     neither         -> the link (only way to see the proof)
+   Default with the checkbox unticked is "file wins", which is the common case. */
 function documentOf(g){
-  if(!g.sigReceived) return null;
+  if(!g.sigReceived || linkDelivered(g)) return null;
   const ps = g.proofs || [];
   const file = g.unsignedProof
             || ps.map(p => p.signed).find(Boolean)
@@ -1450,7 +1464,7 @@ function buildReport(d, parsed){
         L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}${gapNote}` +
           ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
           ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${documentOf(g) ? 'file' : '-'}` +
-          ` | link ${(g.proofs || []).some(p => p.url) ? ((!documentOf(g) || g.sentAsLink || (g.proofs || []).some(p => p.sentAsLink)) ? 'shown' : 'suppressed') : '-'}` +
+          ` | link ${(g.proofs || []).some(p => p.url) ? ((linkDelivered(g) || !documentOf(g)) ? 'shown' : 'suppressed') : '-'}` +
           ` | img ${g.image ? 'Y' : '-'} | st ${g.clientStatus || '-'}` +
           ` | proofs ${ps.length ? ps.join(', ') : '-'}`);
       }
