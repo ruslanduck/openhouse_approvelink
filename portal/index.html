@@ -419,7 +419,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p35-hide-rule',
+  VERSION: 'p37-doc-or-link',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -740,6 +740,9 @@ function mapItem(r){
                 || parseLinkish(pick(r, ['trackingNumber','trackNumber','tracking'], '')).url,
     eta:     String(pick(r, ['customerEtaDisplay','customerETADisplay','eta','customerEta'], '')),
     clientStatus: String(pick(r, ['client_status','clientStatus'], '')),
+    sentAsLink:   truthy(pick(r, ['Proof Sent As Link','Sent As Link','Sent as link',
+                                  'proof_sent_as_link','Link Proof','Digital Proof Sent'], '')),
+    digitalProofFile: String(pick(r, ['Digital Proof File','Signed Proof'], '')),
     approvalDate: String(pick(r, ['workApprovalDate','approvalDate'], '')),
     sigReceived:  truthy(pick(r, ['proofSignatureReceived','signatureProofReceived','signatureProofRecieved'], '')),
     unsignedProof:String(pick(r, ['unsignedProof','unsignedProofUrl','unsignedProofDoc'], '')),
@@ -771,6 +774,10 @@ function mapProof(r){
     orderNo:    String(pick(r, ['Order','orderNo','order #'], '')),
     /* fields that distinguish two proofs of the same product */
     itemRef:    pickRaw(r, ['Digital proof recID','digitalProofRecId','Line Item'], ''),
+    /* Optional Airtable checkbox: the proof went to the client as a link.
+       Any of these names works, so no code change once you create it. */
+    sentAsLink: truthy(pick(r, ['Proof Sent As Link','Sent As Link','Sent as link',
+                                'proof_sent_as_link','Link Proof','Digital Proof Sent'], '')),
     color:      String(pick(r, ['Base Color','baseColor'], '')),
     colorSku:   String(pick(r, ['Color SKU','colorSku'], '')),
     variant:    String(pick(r, ['Variant','variantName'], '')).replace(/^[\s\-–]+|[\s\-–]+$/g, ''),
@@ -973,6 +980,7 @@ function groupByColorway(items){
         image: it.image, sizes: new Map(), total: 0, itemIds: [],
         carrier: it.carrier, tracking: it.tracking, trackingUrl: it.trackingUrl,
         eta: it.eta, approvalDate: it.approvalDate, clientStatus: it.clientStatus,
+        sentAsLink: it.sentAsLink, digitalProofFile: it.digitalProofFile,
         sigReceived: it.sigReceived, unsignedProof: it.unsignedProof, digitalProof: it.digitalProof,
         proofStatus: it.proofStatus, proofComment: it.proofComment, proofDate: it.proofDate
       });
@@ -988,9 +996,10 @@ function groupByColorway(items){
     }
     g.total += it.qty;
     // first non-empty value wins for shared attributes
-    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus'])
+    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus','digitalProofFile'])
       if(!g[f] && it[f]) g[f] = it[f];
     if(it.sigReceived) g.sigReceived = true;
+    if(it.sentAsLink)  g.sentAsLink  = true;
   }
   return [...map.values()].map(g => ({
     ...g,
@@ -1003,9 +1012,9 @@ function groupByColorway(items){
    ══════════════════════════════════════════════════════════════ */
 let STATE = {orders: [], filter: 'all', query: ''};
 
-function proofChip(p, title, tag){
+function proofChip(p, title, tag, showLink){
   const st = proofState(p);
-  if(!st && !p.url) return '';
+  if(!st && !(p.url && showLink !== false)) return '';
   const label = st ? st.label : 'Proof available';
   const cls   = st ? st.cls : '';
   const when  = p.sig && p.approvedAt ? fmtDate(p.approvedAt)
@@ -1018,7 +1027,7 @@ function proofChip(p, title, tag){
   const note = (p.rejected && text)
     ? `<div class="proof__note"><em>Your note</em>${esc(text)}</div>` : '';
 
-  const actions = p.url ? `<div class="proof__actions">
+  const actions = (p.url && showLink !== false) ? `<div class="proof__actions">
     <button class="btn" data-proof="${esc(p.url)}" data-proof-title="${esc(title || p.name || 'Proof')}">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
       ${st && st.cls === 'pill--warn' ? 'Review proof' : 'View proof'}
@@ -1039,10 +1048,14 @@ function proofView(g){
   if(g.proofs && g.proofs.length){
     const many = g.proofs.length > 1;
     const tags = many ? proofTags(g.proofs) : g.proofs.map(() => '');
+    /* If a signed document is on the card, the link is redundant — unless the
+       record says the proof was actually sent as a link. */
+    const hasDoc = !!documentOf(g);
     const body = g.proofs.map((p, i) => proofChip(
       p,
       g.product + (g.color ? ' — ' + g.color : '') + (tags[i] ? ' — ' + tags[i] : ''),
-      tags[i]
+      tags[i],
+      !hasDoc || p.sentAsLink || g.sentAsLink
     )).join('');
     return many
       ? `<div class="proofset"><div class="proofset__h">${g.proofs.length} proofs for this product</div>${body}</div>`
@@ -1056,7 +1069,7 @@ function proofView(g){
     status: st, sig: /approv/i.test(st), rejected: /change|reject|declin/i.test(st),
     reason: g.proofComment, note: g.proofComment, approvedAt: g.proofDate,
     sentAt: g.proofDate, version: '', url: link
-  }, g.product);
+  }, g.product, '', !documentOf(g) || g.sentAsLink);
 }
 
 /* Proofs that name a product not present as a card — listed under the order. */
@@ -1081,15 +1094,18 @@ function orderProofsView(o){
    off the line item OR off the matched Design Request, so check both. */
 /* Single source of truth: the card and the ?debug report both call this, so
    the diagnostics can never claim "no document" while the card shows one. */
+/* A proof reaches the client one of two ways: as a signed document, or as a
+   link to the approval page. Showing both is wrong — and when the fallback
+   used proof_url it printed the very same link twice, once as "Document" and
+   once as "View proof". So Document means a file, nothing else. */
 function documentOf(g){
   if(!g.sigReceived) return null;
   const ps = g.proofs || [];
   const file = g.unsignedProof
             || ps.map(p => p.signed).find(Boolean)
-            || ps.map(p => p.unsigned).find(Boolean) || '';
-  const digital = g.digitalProof || ps.map(p => p.url).find(Boolean) || '';
-  const url = file || digital;
-  return url ? {url, label: file ? 'Signed proof' : 'Digital proof'} : null;
+            || ps.map(p => p.unsigned).find(Boolean)
+            || g.digitalProofFile || '';
+  return file ? {url: file, label: 'Signed proof'} : null;
 }
 
 function documentRow(g){
@@ -1178,7 +1194,9 @@ function orderView(o, i){
       <div class="cell--date"><span class="k">Placed</span><div class="order__date">${esc(fmtDate(o.created)) || '—'}</div></div>
       <div class="cell--addr"><span class="k">Ships to</span><div class="order__addr">${
         o.shipLines.length ? o.shipLines.map((l, k) => k === 0 ? `<b>${esc(l)}</b>` : esc(l)).join('<br>') : '—'}</div></div>
-      <div class="cell--status"><span class="k">Status</span><span class="pill ${pillClass(o.status)}">${esc(o.status)}</span></div>
+      <div class="cell--status"><span class="k">Status</span>${o.status && o.status !== '\u2014'
+        ? `<span class="pill ${pillClass(o.status)}">${esc(o.status)}</span>`
+        : '<div class="order__date">&mdash;</div>'}</div>
       <svg class="order__caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
     </button>
     <div class="order__panel"><div class="order__panelIn"><div class="order__body">
@@ -1431,7 +1449,8 @@ function buildReport(d, parsed){
         const gapNote = g.sizes.length && sized !== g.total ? ` (Σ${sized} of ${g.total})` : '';
         L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}${gapNote}` +
           ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
-          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${(d => d ? d.label.split(' ')[0].toLowerCase() : '-')(documentOf(g))}` +
+          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${documentOf(g) ? 'file' : '-'}` +
+          ` | link ${(g.proofs || []).some(p => p.url) ? ((!documentOf(g) || g.sentAsLink || (g.proofs || []).some(p => p.sentAsLink)) ? 'shown' : 'suppressed') : '-'}` +
           ` | img ${g.image ? 'Y' : '-'} | st ${g.clientStatus || '-'}` +
           ` | proofs ${ps.length ? ps.join(', ') : '-'}`);
       }
