@@ -154,14 +154,14 @@ a{color:inherit}
 .order__addr{font-size:13px;line-height:1.45;color:var(--ink-2)}
 .addr__rest{display:none}
 .order.is-open .addr__rest{display:inline}
+/* Its own line under the address, and heavier than the address itself so it
+   reads as "there is more". Inter, not PT Mono: only the Regular cut of the
+   mono is embedded, so asking for 600 there would synthesise a fake bold. */
 .addr__more{
-  display:inline-flex;align-items:center;gap:5px;margin-top:7px;
-  font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--ink-2);background:var(--paper-2);
-  border:1px solid var(--line);border-radius:5px;padding:3px 7px;
+  display:block;margin-top:5px;
+  font-family:var(--body);font-weight:600;font-size:12px;
+  letter-spacing:-.005em;color:var(--ink);
 }
-.addr__more svg{opacity:.7}
-.order:hover .addr__more{border-color:var(--ink-3)}
 .order.is-open .addr__more{display:none}
 .order__sum{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--ink-3);margin-top:7px;white-space:nowrap}
 .order__addr b{color:var(--ink);font-weight:600}
@@ -430,7 +430,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p43-img-source',
+  VERSION: 'p44-addr-hint',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -1257,9 +1257,7 @@ function addrView(lines){
   const n = lines.length - ADDR_LINES;
   return head +
     `<span class="addr__rest"><br>${rest}</span>` +
-    `<span class="addr__more">` +
-      `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>` +
-      `${n} more line${n === 1 ? '' : 's'} &mdash; open to see</span>`;
+    `<span class="addr__more">+${n} more line${n === 1 ? '' : 's'}</span>`;
 }
 
 function orderView(o, i){
