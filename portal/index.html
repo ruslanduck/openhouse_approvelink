@@ -430,7 +430,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p45-summary-trim',
+  VERSION: 'p46-style-image',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -873,9 +873,15 @@ const EMPTY_SIZE = /^(n\/?\.?a\.?|none|null|n\/a|-{1,2}|—|\.)$/i;
 /* Walks the photo candidates in order and reports which one won. */
 function pickImage(r){
   const chain = [
-    [['Variant Image','variantImage','Variant Photo'], 'variant'],
-    [['productImage','image','imageUrl','photo'],      'product'],
-    [['mockup','mockupUrl','proofImage'],              'mockup']
+    /* colour-specific, via Product Variant */
+    [['Variant Image','variantImage','Variant Photo'],                'variant'],
+    /* the style's own shot, same for every colourway */
+    [['productImage','image','imageUrl','photo'],                     'product'],
+    /* style-level lookup — add one of these in Airtable and rows with no
+       Product Variant link stop falling through to NO IMAGE */
+    [['Product Image (from Products_new)','Image (from Products_new)',
+      'Front (from Products_new)','Style Image','styleImage'],        'style'],
+    [['mockup','mockupUrl','proofImage'],                             'mockup']
   ];
   for(const [names, from] of chain){
     const url = imageUrl(pickRaw(r, names));
