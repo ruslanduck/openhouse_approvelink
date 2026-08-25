@@ -419,7 +419,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p39-no-dup-date',
+  VERSION: 'p40-single-cta',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -1034,7 +1034,6 @@ function proofChip(p, title, tag, showLink, skipDate){
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.8-7 10-7 10 7 10 7-3.8 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
       ${st && st.cls === 'pill--warn' ? 'Review proof' : 'View proof'}
     </button>
-    <a class="btn btn--ghost" href="${esc(p.url)}" target="_blank" rel="noopener">New tab ${EXT}</a>
   </div>` : '';
 
   return `<div class="proof">
