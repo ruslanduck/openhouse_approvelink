@@ -154,8 +154,14 @@ a{color:inherit}
 .order__addr{font-size:13px;line-height:1.45;color:var(--ink-2)}
 .addr__rest{display:none}
 .order.is-open .addr__rest{display:inline}
-.addr__more{display:block;margin-top:4px;font-family:var(--mono);font-size:9.5px;
-  letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.addr__more{
+  display:inline-flex;align-items:center;gap:5px;margin-top:7px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-2);background:var(--paper-2);
+  border:1px solid var(--line);border-radius:5px;padding:3px 7px;
+}
+.addr__more svg{opacity:.7}
+.order:hover .addr__more{border-color:var(--ink-3)}
 .order.is-open .addr__more{display:none}
 .order__sum{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--ink-3);margin-top:7px;white-space:nowrap}
 .order__addr b{color:var(--ink);font-weight:600}
@@ -424,7 +430,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p42-variant-image',
+  VERSION: 'p43-img-source',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -742,9 +748,9 @@ function mapItem(r){
     sizeText:String(pick(r, ['sizeBreakdown','sizes','sizeRun'], '')),
     /* Variant Image is a lookup through Product Variant, so it is the only
        colour-specific photo. Product Image is per style — the same shot for
-       every colourway — so it comes second. */
-    image:   imageUrl(pickRaw(r, ['Variant Image','variantImage','Variant Photo',
-                                  'productImage','image','imageUrl','mockup','mockupUrl','proofImage','photo'])),
+       every colourway — so it comes second. The source is recorded so the
+       ?debug report can say which one was actually used. */
+    ...pickImage(r),
     carrier: String(pick(r, ['carrier','shippingCarrier'], '')),
     tracking:parseLinkish(pick(r, ['trackingNumber','trackNumber','tracking'], '')).text,
     trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], ''))
@@ -863,6 +869,20 @@ function productName(r){
 
 /* Size labels that carry no information — never shown as a chip. */
 const EMPTY_SIZE = /^(n\/?\.?a\.?|none|null|n\/a|-{1,2}|—|\.)$/i;
+
+/* Walks the photo candidates in order and reports which one won. */
+function pickImage(r){
+  const chain = [
+    [['Variant Image','variantImage','Variant Photo'], 'variant'],
+    [['productImage','image','imageUrl','photo'],      'product'],
+    [['mockup','mockupUrl','proofImage'],              'mockup']
+  ];
+  for(const [names, from] of chain){
+    const url = imageUrl(pickRaw(r, names));
+    if(url) return {image: url, imageFrom: from};
+  }
+  return {image: '', imageFrom: ''};
+}
 
 /* "S: 9\nM: 19\nL: 23\nXL: 19\nXXL: 6" → [{label:'S',qty:9}, …]
    Lines without a label:number pair (e.g. "90 totes per design") are ignored. */
@@ -992,7 +1012,10 @@ function attachProofs(groups, proofs){
         g.colorFromProof = true;
       }
     }
-    if(!g.image) g.image = ps.map(p => p.mockup).find(Boolean) || '';
+    if(!g.image){
+      const mk = ps.map(p => p.mockup).find(Boolean) || '';
+      if(mk){ g.image = mk; g.imageFrom = 'proof'; }
+    }
   }
 
   return {groups, proofs: left};
@@ -1006,7 +1029,7 @@ function groupByColorway(items){
     if(!map.has(key)){
       map.set(key, {
         product: it.product, color: it.color, hex: swatchHex(it.color, it.colorHex),
-        image: it.image, sizes: new Map(), total: 0, itemIds: [],
+        image: it.image, imageFrom: it.imageFrom, sizes: new Map(), total: 0, itemIds: [],
         carrier: it.carrier, tracking: it.tracking, trackingUrl: it.trackingUrl,
         eta: it.eta, approvalDate: it.approvalDate, clientStatus: it.clientStatus,
         sentAsLink: it.sentAsLink, digitalProofFile: it.digitalProofFile,
@@ -1025,7 +1048,7 @@ function groupByColorway(items){
     }
     g.total += it.qty;
     // first non-empty value wins for shared attributes
-    for(const f of ['image','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus','digitalProofFile'])
+    for(const f of ['image','imageFrom','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus','digitalProofFile'])
       if(!g[f] && it[f]) g[f] = it[f];
     if(it.sigReceived) g.sigReceived = true;
     if(it.sentAsLink)  g.sentAsLink  = true;
@@ -1234,7 +1257,9 @@ function addrView(lines){
   const n = lines.length - ADDR_LINES;
   return head +
     `<span class="addr__rest"><br>${rest}</span>` +
-    `<span class="addr__more">+${n} more line${n === 1 ? '' : 's'}</span>`;
+    `<span class="addr__more">` +
+      `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>` +
+      `${n} more line${n === 1 ? '' : 's'} &mdash; open to see</span>`;
 }
 
 function orderView(o, i){
@@ -1492,7 +1517,8 @@ function buildReport(d, parsed){
   if(items.length) L.push('coverage: ' + [
     cov('variantColor', has('Variant Color')), cov('variantSize', has('Variant Size')),
     cov('baseColor', has('Base Color')), cov('sizeBreakdown', has('Size Breakdown')),
-    cov('productImage', has('Product Image')), cov('carrier', has('Carrier')),
+    cov('variantImage', has('Variant Image')), cov('productImage', has('Product Image')),
+    cov('carrier', has('Carrier')),
     cov('tracking', has('Tracking Number')), cov('trackingUrl', has('tracking_url')),
     cov('eta', has('Customer ETA Display')), cov('workApprovalDate', has('Work Approval Date')),
     cov('sigReceived', has('Proof Signature Received')), cov('unsignedProof', has('Unsigned Proof')),
@@ -1523,7 +1549,7 @@ function buildReport(d, parsed){
           ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
           ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${documentOf(g) ? 'file' : '-'}` +
           ` | link ${(g.proofs || []).some(p => p.url) ? ((linkDelivered(g) || !documentOf(g)) ? 'shown' : 'suppressed') : '-'}` +
-          ` | img ${g.image ? 'Y' : '-'} | st ${g.clientStatus || '-'}` +
+          ` | img ${g.image ? (g.imageFrom || '?') : '-'} | st ${g.clientStatus || '-'}` +
           ` | proofs ${ps.length ? ps.join(', ') : '-'}`);
       }
       if(o.proofs && o.proofs.length)
