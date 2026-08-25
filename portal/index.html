@@ -424,7 +424,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p41-card-polish',
+  VERSION: 'p42-variant-image',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -477,7 +477,9 @@ function clean(v){
 /* Airtable attachments carry a full-size url plus thumbnails. Cards are
    ~92px, so prefer the 512px thumbnail — some originals are 16MB. */
 function imageUrl(v){
-  const first = Array.isArray(v) ? v[0] : v;
+  let first = Array.isArray(v) ? v.find(x => x) : v;
+  /* Airtable lookups of attachment fields can nest: [[{url…}]] */
+  if(Array.isArray(first)) first = first.find(x => x);
   if(!first) return '';
   if(typeof first === 'string') return first.trim();
   const t = first.thumbnails || {};
@@ -738,7 +740,11 @@ function mapItem(r){
     qty:     num(pick(r, ['quantity','qty','productionQuantity','units','count'], 0)),
     /* legacy rows carry all sizes in one text field: "S: 9\nM: 19\nL: 23" */
     sizeText:String(pick(r, ['sizeBreakdown','sizes','sizeRun'], '')),
-    image:   imageUrl(pickRaw(r, ['productImage','image','imageUrl','mockup','mockupUrl','proofImage','photo'])),
+    /* Variant Image is a lookup through Product Variant, so it is the only
+       colour-specific photo. Product Image is per style — the same shot for
+       every colourway — so it comes second. */
+    image:   imageUrl(pickRaw(r, ['Variant Image','variantImage','Variant Photo',
+                                  'productImage','image','imageUrl','mockup','mockupUrl','proofImage','photo'])),
     carrier: String(pick(r, ['carrier','shippingCarrier'], '')),
     tracking:parseLinkish(pick(r, ['trackingNumber','trackNumber','tracking'], '')).text,
     trackingUrl:String(pick(r, ['trackingUrl','trackUrl','trackingLink'], ''))
