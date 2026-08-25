@@ -419,7 +419,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p34-header-mark',
+  VERSION: 'p35-hide-rule',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -430,9 +430,10 @@ const CONFIG = {
      cleaned up or split into a client-safe one. */
   SHOW_PROOF_NOTES: false,
 
-  /* Orders with no line items at all (placeholders, cancelled shells) say
-     nothing to a client. Hidden by default; the ?debug report always states
-     how many were dropped, so nothing disappears unnoticed. */
+  /* True placeholder orders — no items, no status, no address — say nothing
+     to a client. An order missing only its items is NOT a placeholder: that
+     is usually Airtable truncation, and hiding it makes a real order vanish.
+     The ?debug report names anything dropped. */
   HIDE_EMPTY_ORDERS: true,
 
   // Fall back to sample data when the webhook isn't reachable yet.
@@ -656,9 +657,13 @@ function normalise(raw){
   }
 
   orders.sort((a,b) => b.ts - a.ts);
-  const empty = orders.filter(o => !o.groups.length).length;
-  window.__portalEmptyOrders = empty;
-  if(CONFIG.HIDE_EMPTY_ORDERS && empty) orders = orders.filter(o => o.groups.length);
+  /* Only a shell with nothing at all qualifies as a placeholder. */
+  const isShell = o => !o.groups.length && !o.shipLines.length && (!o.status || o.status === '\u2014');
+  const dropped = orders.filter(isShell);
+  window.__portalEmptyOrders = dropped.length;
+  window.__portalDropped = dropped.map(o => o.no);
+  window.__portalEmptyKept = orders.filter(o => !o.groups.length && !isShell(o)).map(o => o.no);
+  if(CONFIG.HIDE_EMPTY_ORDERS && dropped.length) orders = orders.filter(o => !isShell(o));
   if(!clientName) clientName = pick(rows[0] || {}, ['companyName','clientName','client','customer','company']) || '';
   return {clientName: String(clientName || 'Client'), orders};
 }
@@ -1379,7 +1384,19 @@ function buildReport(d, parsed){
   L.push('payload: orders ' + [].concat(j.orders || []).length +
          ' · items ' + items.length + ' · proofs ' + [].concat(j.proofs || []).length);
   L.push('unmatched: items ' + (window.__portalOrphans || 0) + ' · proofs ' + (window.__portalProofOrphans || 0) +
-         ' · empty orders hidden ' + (window.__portalEmptyOrders || 0));
+         ' · placeholder orders hidden ' + (window.__portalEmptyOrders || 0));
+  if((window.__portalDropped || []).length)
+    L.push('hidden as placeholders: ' + window.__portalDropped.join(', '));
+  if((window.__portalEmptyKept || []).length)
+    L.push('<span class="bad">no line items but shown anyway: ' + window.__portalEmptyKept.join(', ') + '</span>');
+  /* A count sitting exactly on a round limit almost always means Airtable
+     stopped early rather than that the data ends there. */
+  for(const [k, n] of [['items', items.length],
+                       ['proofs', [].concat(j.proofs || []).length],
+                       ['orders', [].concat(j.orders || []).length]])
+    if([100, 500, 1000].includes(n))
+      L.push('<span class="bad">' + k + ' count is exactly ' + n +
+             ' — almost certainly truncated, raise maxRecords on that Airtable module</span>');
   if(d.err) L.push('PROBLEM: ' + d.err);
 
   if(items.length) L.push('coverage: ' + [
