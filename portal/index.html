@@ -152,6 +152,11 @@ a{color:inherit}
 .order__no{font-family:var(--mono);font-size:13.5px;letter-spacing:-.01em;font-weight:400}
 .order__date{font-size:13.5px;color:var(--ink-2)}
 .order__addr{font-size:13px;line-height:1.45;color:var(--ink-2)}
+.addr__rest{display:none}
+.order.is-open .addr__rest{display:inline}
+.addr__more{display:block;margin-top:4px;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.order.is-open .addr__more{display:none}
 .order__sum{font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;color:var(--ink-3);margin-top:7px;white-space:nowrap}
 .order__addr b{color:var(--ink);font-weight:600}
 .order__caret{align-self:center;justify-self:end;color:var(--ink-3);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
@@ -419,7 +424,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p40-single-cta',
+  VERSION: 'p41-card-polish',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -780,6 +785,7 @@ function mapProof(r){
                                 'proof_sent_as_link','Link Proof','Digital Proof Sent'], '')),
     color:      String(pick(r, ['Base Color','baseColor'], '')),
     colorSku:   String(pick(r, ['Color SKU','colorSku'], '')),
+    mockup:     imageUrl(pickRaw(r, ['Product mockup: High-res','Product mockup','Mockup'])),
     variant:    String(pick(r, ['Variant','variantName'], '')).replace(/^[\s\-–]+|[\s\-–]+$/g, ''),
     designId:   String(pick(r, ['Design ID','designId'], '')),
     requestDate:String(pick(r, ['Request Date','requestDate'], '')),
@@ -843,6 +849,7 @@ function productName(r){
                  'style','styleName','Style & Color','SKU_new','sku'];
   for(const c of cands){
     const v = String(pick(r, [c], '')).trim();
+    if(/^rec[A-Za-z0-9]{14}$/.test(v)) continue;   // a record id is not a name
     if(/[a-z0-9]{2}/i.test(v)) return v.replace(/\s*-\s*$/, '').trim();
   }
   return 'Item';
@@ -966,6 +973,22 @@ function attachProofs(groups, proofs){
   for(const g of groups) if(g.proofs) g.proofs.sort(bySeq);
   left.sort(bySeq);
 
+  /* A line item often has no Variant Color while its proof names one. Borrow
+     it — but only when the proofs agree on a single colour, otherwise we'd be
+     inventing a colour for a card that merged two of them. */
+  for(const g of groups){
+    const ps = g.proofs || [];
+    if(!g.color){
+      const names = [...new Set(ps.map(p => (p.color || p.colorSku || '').trim()).filter(Boolean))];
+      if(names.length === 1){
+        g.color = names[0];
+        g.hex = swatchHex(g.color, g.colorHex);
+        g.colorFromProof = true;
+      }
+    }
+    if(!g.image) g.image = ps.map(p => p.mockup).find(Boolean) || '';
+  }
+
   return {groups, proofs: left};
 }
 
@@ -1017,11 +1040,10 @@ function proofChip(p, title, tag, showLink, skipDate){
   if(!st && !(p.url && showLink !== false)) return '';
   const label = st ? st.label : 'Proof available';
   const cls   = st ? st.cls : '';
-  /* The card already prints "Approved <date>" from the line item. Repeating
-     the same date on the chip below is noise, so drop it when they match. */
-  const when  = p.sig && p.approvedAt ? (skipDate ? '' : fmtDate(p.approvedAt))
-              : (!p.sig && p.sentAt ? 'Sent ' + fmtDate(p.sentAt) : '');
-  const ver   = p.version ? `<span class="proof__label">V${esc(p.version)}</span>` : '';
+  /* Version and date are dropped: the approval date already appears in the
+     card's own rows, and the version number means nothing to a client. */
+  const when  = '';
+  const ver   = '';
   const mark  = tag ? `<span class="proof__tag">${esc(tag)}</span>` : '';
 
   /* Only surfaced when the note field is known to be client-safe. */
@@ -1137,6 +1159,10 @@ function itemStatusRow(g, orderStatus){
   return `<div class="row"><span>Status</span><div><span class="pill ${pillClass(s)}">${esc(s)}</span></div></div>`;
 }
 
+/* Once an item is delivered, cancelled or in transit, an estimated arrival
+   date is either wrong or already superseded by the tracking link. */
+const SETTLED = /deliver|cancel|in ?transit|shipped|complete/i;
+
 function cardView(g, orderStatus){
   const max = Math.max(1, ...g.sizes.map(s => s.qty));
   /* A proportional bar with one segment is just a black line — it shows no
@@ -1149,7 +1175,12 @@ function cardView(g, orderStatus){
      find the gap by adding up. */
   const sized = g.sizes.reduce((n, s) => n + s.qty, 0);
   const gap = g.total - sized;
-  const chips = g.sizes.length
+  /* One size, and that size is "one size": the chip repeats the big number
+     above it and adds nothing. Real sizes stay, even single ones — "M 1"
+     tells the client something "OS 125" does not. */
+  const ONE_SIZE = /^(os|osfa|one ?size|osz|all|n\/a)$/i;
+  const redundant = g.sizes.length === 1 && ONE_SIZE.test(g.sizes[0].label.trim()) && gap <= 0;
+  const chips = (g.sizes.length && !redundant)
     ? `<div class="run__list">${g.sizes.map(s => `<span class="sz">${esc(s.label)} <b>${s.qty}</b></span>`).join('')}</div>` +
       (gap > 0 ? `<div class="run__note">${gap.toLocaleString()} more not listed by size</div>` : '')
     : '';
@@ -1174,7 +1205,8 @@ function cardView(g, orderStatus){
     <div class="rows">
       ${g.carrier ? `<div class="row"><span>Carrier</span><div>${esc(g.carrier)}</div></div>` : ''}
       ${track}
-      ${g.eta ? `<div class="row"><span>ETA</span><div>${esc(g.eta)}</div></div>` : ''}
+      ${(g.eta && !SETTLED.test(String(g.clientStatus || orderStatus || '')))
+          ? `<div class="row"><span>ETA</span><div>${esc(g.eta)}</div></div>` : ''}
       ${g.approvalDate ? `<div class="row"><span>Approved</span><div>${esc(fmtDate(g.approvalDate))}</div></div>` : ''}
       ${itemStatusRow(g, orderStatus)}
       ${documentRow(g)}
@@ -1183,15 +1215,36 @@ function cardView(g, orderStatus){
   </article>`;
 }
 
+/* Some addresses run to seven or more lines. Show five, keep the rest behind
+   the row's own expand — no extra control, and no nested button inside the
+   row button, which would be invalid markup. */
+const ADDR_LINES = 5;
+function addrView(lines){
+  if(!lines.length) return '&mdash;';
+  const fmt = (l, k) => k === 0 ? `<b>${esc(l)}</b>` : esc(l);
+  if(lines.length <= ADDR_LINES) return lines.map(fmt).join('<br>');
+  const head = lines.slice(0, ADDR_LINES).map(fmt).join('<br>');
+  const rest = lines.slice(ADDR_LINES).map(l => esc(l)).join('<br>');
+  const n = lines.length - ADDR_LINES;
+  return head +
+    `<span class="addr__rest"><br>${rest}</span>` +
+    `<span class="addr__more">+${n} more line${n === 1 ? '' : 's'}</span>`;
+}
+
 function orderView(o, i){
   const units = o.groups.reduce((n, g) => n + g.total, 0);
   const n = o.groups.length;
   /* Contents summary sits on the collapsed row, so the client can scan
      order sizes without opening anything. */
-  const summary = n
-    ? `${n} colorway${n === 1 ? '' : 's'}` +
-      (units > 0 ? ` &middot; ${units.toLocaleString()} unit${units === 1 ? '' : 's'}` : '')
-    : 'No items yet';
+  /* A card is one product in one colour. With four different products and no
+     colours, "4 colorways" is simply wrong — so count products, and mention
+     colourways only when a product genuinely splits into several. */
+  const products = new Set(o.groups.map(g => String(g.product).toLowerCase())).size;
+  const parts = [];
+  if(n) parts.push(`${products} product${products === 1 ? '' : 's'}`);
+  if(n > products) parts.push(`${n} colorway${n === 1 ? '' : 's'}`);
+  if(units > 0) parts.push(`${units.toLocaleString()} unit${units === 1 ? '' : 's'}`);
+  const summary = parts.length ? parts.join(' &middot; ') : 'No items yet';
   const extra = [
     o.poNumber ? `<div><span>PO</span>${esc(o.poNumber)}</div>` : '',
     o.inHands  ? `<div><span>In hands</span>${esc(fmtDate(o.inHands))}</div>` : ''
@@ -1206,7 +1259,7 @@ function orderView(o, i){
       </div>
       <div class="cell--date"><span class="k">Placed</span><div class="order__date">${esc(fmtDate(o.created)) || '—'}</div></div>
       <div class="cell--addr"><span class="k">Ships to</span><div class="order__addr">${
-        o.shipLines.length ? o.shipLines.map((l, k) => k === 0 ? `<b>${esc(l)}</b>` : esc(l)).join('<br>') : '—'}</div></div>
+        addrView(o.shipLines)}</div></div>
       <div class="cell--status"><span class="k">Status</span>${o.status && o.status !== '\u2014'
         ? `<span class="pill ${pillClass(o.status)}">${esc(o.status)}</span>`
         : '<div class="order__date">&mdash;</div>'}</div>
