@@ -430,7 +430,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p44-addr-hint',
+  VERSION: 'p45-summary-trim',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -1265,13 +1265,11 @@ function orderView(o, i){
   const n = o.groups.length;
   /* Contents summary sits on the collapsed row, so the client can scan
      order sizes without opening anything. */
-  /* A card is one product in one colour. With four different products and no
-     colours, "4 colorways" is simply wrong — so count products, and mention
-     colourways only when a product genuinely splits into several. */
+  /* Products and units only — the colourway count added nothing the client
+     could act on, and the cards themselves already show the split. */
   const products = new Set(o.groups.map(g => String(g.product).toLowerCase())).size;
   const parts = [];
   if(n) parts.push(`${products} product${products === 1 ? '' : 's'}`);
-  if(n > products) parts.push(`${n} colorway${n === 1 ? '' : 's'}`);
   if(units > 0) parts.push(`${units.toLocaleString()} unit${units === 1 ? '' : 's'}`);
   const summary = parts.length ? parts.join(' &middot; ') : 'No items yet';
   const extra = [
