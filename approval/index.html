@@ -638,12 +638,23 @@ function formatMeasure(s){
 }
 
 /* размеры: "РАЗМЕР / … - N pcs"; OS/one-size не показываем */
+const SIZE_TOKENS=["OSFA","ONE SIZE","OS","XXS","XS","S","M","L","XL","2XL","XXL","3XL","XXXL","4XL","5XL","6XL"];
+const SIZE_NORM={"XXL":"2XL","XXXL":"3XL","ONE SIZE":"OSFA","OS":"OSFA"};
+const isSizeToken=t=>SIZE_TOKENS.includes(String(t||"").toUpperCase().replace(/\s+/g," ").trim());
+/* понимает оба порядка: "Black / S - 10 pcs" и "S / White - 6 pcs", а также "S - 6 pcs" */
 function parseSizes(d){
   if(Array.isArray(d.sizes) && d.sizes.length) return d.sizes;
-  const txt = String(d.variantText||"");
-  const rows=[]; let m;
-  const re=/\b(OSFA|ONE ?SIZE|OS|XXXL|XXL|4XL|3XL|2XL|XL|XS|S|M|L)\s*\/[^]*?-\s*(\d+)\s*pcs?\b/gi;
-  while((m=re.exec(txt))!==null) rows.push({ size:m[1].toUpperCase().replace(/\s+/g," "), qty:parseInt(m[2],10) });
+  const rows=[];
+  String(d.variantText||"").split(/\|\||\r?\n|;;/).map(x=>x.trim()).filter(Boolean).forEach(row=>{
+    const q=/-\s*(\d+)\s*pcs?\b/i.exec(row); if(!q) return;
+    const qty=parseInt(q[1],10);
+    const left=row.slice(0,q.index).trim();                       // "Black / S" | "S / White" | "S"
+    const parts=left.split("/").map(x=>x.trim()).filter(Boolean);
+    let size=parts.find(isSizeToken) || (isSizeToken(left)?left:"");
+    if(!size) return;                                             // размер не распознан — строку пропускаем
+    size=size.toUpperCase().replace(/\s+/g," ").trim();
+    rows.push({ size: SIZE_NORM[size]||size, qty });
+  });
   return rows;
 }
 
