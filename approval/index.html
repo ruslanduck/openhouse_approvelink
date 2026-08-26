@@ -390,6 +390,7 @@
 const USE_MOCK        = false;   // песочница. Для прода -> false
 const WEBHOOK_PROOF   = "https://hook.us2.make.com/k2a9wj9sq2y4s3webrd9vr0b13xypm9v";
 const WEBHOOK_DECISION= "https://hook.us2.make.com/s33rzx18u09jxbhps7wc9nmkltlr6pzp";
+const WEBHOOK_LOG     = "";   // <-- URL вебхука сценария логирования просмотров (пусто = логирование выключено)
 
 const MOCK = {
   recordID:"rectkLj0T3LCQiOlI",
@@ -472,6 +473,37 @@ function sanitizeProof(d){
   o.frontSize=normSize(o.frontSize);
   o.backSize =normSize(o.backSize);
   return o;
+}
+
+/* ================= ЛОГ ПРОСМОТРОВ =================
+   Пишем в комментарии заказа факт открытия страницы пруфа: IP, город/страна, провайдер
+   и тип ссылки (клиентская или вендорская). Дату/время добавит сам комментарий Airtable. */
+async function logProofView(d){
+  if(!WEBHOOK_LOG || !d) return;
+  const vendor=isVendorMode();
+  const key="ohProofViewed:"+(d.recordID||"")+":"+(vendor?"vendor":"client");
+  try{ if(sessionStorage.getItem(key)) return; sessionStorage.setItem(key,"1"); }catch(e){}
+
+  let geo={};
+  try{ const r=await fetch("https://ipwho.is/",{cache:"no-store"}); if(r.ok) geo=await r.json(); }catch(e){}
+  const conn=geo.connection||{};
+  const payload={
+    event:    vendor ? "Vendor proof viewed" : "Client proof viewed",
+    orderNo:  d.orderNo||"",
+    recordID: d.recordID||"",
+    product:  d.productName||"",
+    ip:       geo.ip||"",
+    city:     geo.city||"",
+    region:   geo.region||"",
+    country:  geo.country||"",
+    isp:      conn.isp||conn.org||"",
+    device:   navigator.userAgent||"",
+    referrer: document.referrer||""
+  };
+  try{
+    await fetch(WEBHOOK_LOG,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload),keepalive:true});
+  }catch(e){ /* логирование не должно ломать страницу */ }
 }
 
 /* ================= API ================= */
@@ -1142,19 +1174,47 @@ async function downloadImageFile(url, filename){
   setTimeout(()=>URL.revokeObjectURL(u),1500);
 }
 
-// клик по иконке скачивания на мокапе (вендор-пруф)
+/* оригинальный файл из поля high res mockup (как есть: PDF/AI/PNG — без конвертации) */
+async function prepRawMockup(d){
+  const urls=parseImageUrls(d && (d.mockupHighUrl || d.mockupHigh));
+  if(!urls.length) return null;
+  try{
+    const r=await fetch(urls[0],{mode:"cors"}); if(!r.ok) return null;
+    const blob=await r.blob();
+    const EXT={"application/pdf":"pdf","application/postscript":"ai","application/illustrator":"ai",
+               "image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/tiff":"tif"};
+    let ext=EXT[blob.type];
+    if(!ext){
+      const m=/\.([a-z0-9]{2,4})(?:[?#]|$)/i.exec(urls[0]||"");     // пробуем взять из ссылки
+      ext = m ? m[1].toLowerCase() : (/^image\//.test(blob.type) ? (blob.type.split("/")[1]||"png").replace("jpeg","jpg") : "pdf");
+    }
+    const safe=x=>String(x||"").replace(/[^\w\-]+/g,"_");
+    return { url:URL.createObjectURL(blob),
+             filename:`${safe(d.orderNo)||"proof"}_${safe(d.productName)}_hires.${ext}` };
+  }catch(e){ return null; }   // нет CORS/файла — просто не отдаём второй файл
+}
+function clickDownload(url, filename){
+  const a=document.createElement("a"); a.href=url; a.download=filename; a.rel="noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// клик по иконке скачивания на мокапе (вендор-пруф): PDF страницы + оригинал hi-res мокапа
 document.addEventListener("click",async e=>{
   const btn=e.target.closest(".pdf-dl"); if(!btn) return;
   if(btn.disabled) return;
   const label=btn.querySelector("span"), origDisp=label?label.style.display:"";
   const setLabel=t=>{ if(label){ label.style.display="inline"; label.textContent=t; } };
+  const reset=()=>{ setLabel("Download PDF"); if(label) label.style.display=origDisp; };
 
-  // второй тап: файл уже готов — сохраняем сразу, внутри «свежего» жеста (нужно для iOS)
+  // второй тап: файлы уже готовы — сохраняем внутри «свежего» жеста (нужно для iOS)
   if(btn.dataset.ready){
-    const a=document.createElement("a"); a.href=btn.dataset.ready; a.download=btn.dataset.filename||"proof.pdf";
-    document.body.appendChild(a); a.click(); a.remove();
-    setLabel("Download PDF"); if(label) label.style.display=origDisp;
-    delete btn.dataset.ready; delete btn.dataset.filename;
+    clickDownload(btn.dataset.ready, btn.dataset.filename||"proof.pdf");
+    if(btn.dataset.rawReady){
+      const ru=btn.dataset.rawReady, rf=btn.dataset.rawFilename||"hires";
+      setTimeout(()=>clickDownload(ru,rf),400);      // второй файл чуть позже, иначе браузер глотает
+    }
+    reset();
+    ["ready","filename","rawReady","rawFilename"].forEach(k=>delete btn.dataset[k]);
     return;
   }
 
@@ -1166,20 +1226,23 @@ document.addEventListener("click",async e=>{
       buildVendorPdf(CURRENT),
       new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout: PDF took too long")),180000))
     ]);
-    const blob=res.doc.output("blob"), url=URL.createObjectURL(blob);
-    if(iOS){                                   // на iOS жест уже «остыл» — просим тапнуть ещё раз
+    const url=URL.createObjectURL(res.doc.output("blob"));
+    const raw=await prepRawMockup(CURRENT);          // готовим оба файла заранее
+    if(iOS){                                          // на iOS жест уже «остыл» — просим тапнуть ещё раз
       btn.dataset.ready=url; btn.dataset.filename=res.filename;
-      setLabel("Save PDF"); setTimeout(()=>URL.revokeObjectURL(url),300000);
+      if(raw){ btn.dataset.rawReady=raw.url; btn.dataset.rawFilename=raw.filename; }
+      setLabel(raw?"Save 2 files":"Save PDF");
+      setTimeout(()=>{ URL.revokeObjectURL(url); if(raw) URL.revokeObjectURL(raw.url); },300000);
     }else{
-      const a=document.createElement("a"); a.href=url; a.download=res.filename;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(()=>URL.revokeObjectURL(url),20000);
-      setLabel("Download PDF"); if(label) label.style.display=origDisp;
+      clickDownload(url,res.filename);
+      if(raw) setTimeout(()=>clickDownload(raw.url,raw.filename),400);
+      setTimeout(()=>{ URL.revokeObjectURL(url); if(raw) URL.revokeObjectURL(raw.url); },30000);
+      reset();
     }
   }
   catch(err){
     alert("Sorry, the PDF could not be generated.\n\n"+(err&&err.message?err.message:err)+"\n\nIf you're in an in-app browser (Instagram, Telegram, etc.), please open this link in Safari or Chrome.");
-    setLabel("Download PDF"); if(label) label.style.display=origDisp;
+    reset();
   }
   finally{ btn.disabled=false; }
 });
@@ -1240,7 +1303,7 @@ function armReveal(){
   const id=getId();const content=document.getElementById("content");
   if(!id&&!USE_MOCK){document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>Link is missing its proof</h2>Please open the link from your email, or contact your account manager.</div>`;return;}
-  try{CURRENT=sanitizeProof(await API.getProof(id));content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();}
+  try{CURRENT=sanitizeProof(await API.getProof(id));content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();logProofView(CURRENT);}
   catch(e){console.error("proof load failed:",e);document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>We couldn’t find this proof</h2>It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;}
 })();
