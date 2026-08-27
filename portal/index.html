@@ -430,7 +430,7 @@ a:hover .ext{opacity:1}
 const CONFIG = {
   /* Bump this on every deploy. Shown in the ?debug panel so you can tell
      at a glance whether the live domain is serving the newest file. */
-  VERSION: 'p46-style-image',
+  VERSION: 'p48-strict-link',
   // Make webhook that returns this client's orders.
   // Called as: WEBHOOK_URL + '?record_id=' + <id from the page URL>
   WEBHOOK_URL: 'https://hook.us2.make.com/abrea6i91eeauu8xzxhb6vmy2tpb9fl2',
@@ -440,6 +440,13 @@ const CONFIG = {
      instructions). Off by default — turn on only if that field gets
      cleaned up or split into a client-safe one. */
   SHOW_PROOF_NOTES: false,
+
+  /* Strict rule: the proof link appears only when "Proof Sent As Link" is
+     ticked. Without the flag and without a file, the client sees the status
+     but no way to open the proof — which is the intent, though it also means
+     proofs still awaiting approval offer no button unless the flag is set.
+     Set to false to fall back to "link whenever there is no file". */
+  PROOF_LINK_REQUIRES_FLAG: true,
 
   /* True placeholder orders — no items, no status, no address — say nothing
      to a client. An order missing only its items is NOT a placeholder: that
@@ -759,7 +766,8 @@ function mapItem(r){
     clientStatus: String(pick(r, ['client_status','clientStatus'], '')),
     sentAsLink:   truthy(pick(r, ['Proof Sent As Link','Sent As Link','Sent as link',
                                   'proof_sent_as_link','Link Proof','Digital Proof Sent'], '')),
-    digitalProofFile: String(pick(r, ['Digital Proof File','Signed Proof'], '')),
+    digitalProofFile: String(pick(r, ['Digital Proof File'], '')),
+    signedProof:      String(pick(r, ['Signed Proof'], '')),
     approvalDate: String(pick(r, ['workApprovalDate','approvalDate'], '')),
     sigReceived:  truthy(pick(r, ['proofSignatureReceived','signatureProofReceived','signatureProofRecieved'], '')),
     unsignedProof:String(pick(r, ['unsignedProof','unsignedProofUrl','unsignedProofDoc'], '')),
@@ -1039,6 +1047,7 @@ function groupByColorway(items){
         carrier: it.carrier, tracking: it.tracking, trackingUrl: it.trackingUrl,
         eta: it.eta, approvalDate: it.approvalDate, clientStatus: it.clientStatus,
         sentAsLink: it.sentAsLink, digitalProofFile: it.digitalProofFile,
+        signedProof: it.signedProof,
         sigReceived: it.sigReceived, unsignedProof: it.unsignedProof, digitalProof: it.digitalProof,
         proofStatus: it.proofStatus, proofComment: it.proofComment, proofDate: it.proofDate
       });
@@ -1054,7 +1063,7 @@ function groupByColorway(items){
     }
     g.total += it.qty;
     // first non-empty value wins for shared attributes
-    for(const f of ['image','imageFrom','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus','digitalProofFile'])
+    for(const f of ['image','imageFrom','carrier','tracking','trackingUrl','eta','approvalDate','unsignedProof','digitalProof','proofStatus','proofComment','proofDate','sizeText','clientStatus','digitalProofFile','signedProof'])
       if(!g[f] && it[f]) g[f] = it[f];
     if(it.sigReceived) g.sigReceived = true;
     if(it.sentAsLink)  g.sentAsLink  = true;
@@ -1108,7 +1117,9 @@ function proofView(g){
     const tags = many ? proofTags(g.proofs) : g.proofs.map(() => '');
     /* If a signed document is on the card, the link is redundant — unless the
        record says the proof was actually sent as a link. */
-    const showLink = linkDelivered(g) || !documentOf(g);
+    const showLink = CONFIG.PROOF_LINK_REQUIRES_FLAG
+      ? linkDelivered(g)
+      : (linkDelivered(g) || !documentOf(g));
     const sameDay = d => d && fmtDate(d) === fmtDate(g.approvalDate);
     const body = g.proofs.map((p, i) => proofChip(
       p,
@@ -1129,7 +1140,9 @@ function proofView(g){
     status: st, sig: /approv/i.test(st), rejected: /change|reject|declin/i.test(st),
     reason: g.proofComment, note: g.proofComment, approvedAt: g.proofDate,
     sentAt: g.proofDate, version: '', url: link
-  }, g.product, '', linkDelivered(g) || !documentOf(g));
+  }, g.product, '', CONFIG.PROOF_LINK_REQUIRES_FLAG
+       ? linkDelivered(g)
+       : (linkDelivered(g) || !documentOf(g)));
 }
 
 /* Proofs that name a product not present as a card — listed under the order. */
@@ -1142,7 +1155,8 @@ function orderProofsView(o){
       <span class="pill ${st ? st.cls : ''}">${esc(st ? st.label : 'Proof available')}</span>
       <b>${esc(p.name || 'Proof')}</b>
       ${p.version ? `<i>V${esc(p.version)}</i>` : ''}
-      ${p.url ? `<button class="btn btn--ghost" data-proof="${esc(p.url)}" data-proof-title="${esc(p.name || 'Proof')}">Open</button>` : ''}
+      ${(p.url && (!CONFIG.PROOF_LINK_REQUIRES_FLAG || p.sentAsLink))
+          ? `<button class="btn btn--ghost" data-proof="${esc(p.url)}" data-proof-title="${esc(p.name || 'Proof')}">Open</button>` : ''}
     </li>`;
   }).filter(Boolean).join('');
   if(!rows) return '';
@@ -1171,11 +1185,18 @@ function linkDelivered(g){
 function documentOf(g){
   if(!g.sigReceived || linkDelivered(g)) return null;
   const ps = g.proofs || [];
-  const file = g.unsignedProof
-            || ps.map(p => p.signed).find(Boolean)
-            || ps.map(p => p.unsigned).find(Boolean)
-            || g.digitalProofFile || '';
-  return file ? {url: file, label: 'Signed proof'} : null;
+  /* Unsigned Proof is the field that actually holds the PDF — 740 records
+     against 1 for Signed Proof — so it leads, and the row is labelled by
+     whichever field supplied the file rather than always saying "Signed". */
+  const chain = [
+    [g.unsignedProof,                        'Unsigned proof'],
+    [ps.map(p => p.unsigned).find(Boolean),  'Unsigned proof'],
+    [ps.map(p => p.signed).find(Boolean),    'Signed proof'],
+    [g.signedProof,                          'Signed proof'],
+    [g.digitalProofFile,                     'Signed proof']
+  ];
+  for(const [url, label] of chain) if(url) return {url, label};
+  return null;
 }
 
 function documentRow(g){
@@ -1549,8 +1570,10 @@ function buildReport(d, parsed){
         const gapNote = g.sizes.length && sized !== g.total ? ` (Σ${sized} of ${g.total})` : '';
         L.push(`    ${g.product} / ${g.color || '—'} | ${g.total} | sz ${g.sizes.map(z => z.label + ':' + z.qty).join(' ') || '—'}${gapNote}` +
           ` | car ${g.carrier || '-'} | trk ${g.tracking ? 'Y' : '-'} | eta ${g.eta ? 'Y' : '-'}` +
-          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${documentOf(g) ? 'file' : '-'}` +
-          ` | link ${(g.proofs || []).some(p => p.url) ? ((linkDelivered(g) || !documentOf(g)) ? 'shown' : 'suppressed') : '-'}` +
+          ` | appr ${g.approvalDate ? 'Y' : '-'} | doc ${(d => d ? d.label.split(' ')[0].toLowerCase() : '-')(documentOf(g))}` +
+          ` | link ${(g.proofs || []).some(p => p.url)
+              ? ((CONFIG.PROOF_LINK_REQUIRES_FLAG ? linkDelivered(g) : (linkDelivered(g) || !documentOf(g))) ? 'shown' : 'suppressed')
+              : '-'}` +
           ` | img ${g.image ? (g.imageFrom || '?') : '-'} | st ${g.clientStatus || '-'}` +
           ` | proofs ${ps.length ? ps.join(', ') : '-'}`);
       }
