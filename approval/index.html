@@ -475,6 +475,18 @@ function sanitizeProof(d){
   return o;
 }
 
+/* Собирает PDF карточки пруфа и кладёт его в Dropbox (та же папка, что и остальные файлы заказа).
+   Возвращает прямую ссылку — её Make положит в Airtable в "Vendor Production Files". */
+async function uploadProofPdf(d){
+  if(!DROPBOX.enabled()) return null;
+  const res=await buildVendorPdf(d);                    // {doc, filename}
+  const blob=res.doc.output("blob");
+  let file; try{ file=new File([blob],res.filename,{type:"application/pdf"}); }
+  catch(e){ file=blob; file.name=res.filename; }
+  const link=await uploadFileToDropbox(file, d.orderNo, d.productName);
+  return { url:link, name:res.filename };
+}
+
 /* ================= ЛОГ ПРОСМОТРОВ =================
    Пишем в комментарии заказа факт открытия страницы пруфа: IP, город/страна, провайдер
    и тип ссылки (клиентская или вендорская). Дату/время добавит сам комментарий Airtable. */
@@ -522,9 +534,14 @@ const API = {
       catch(__){ return JSON.parse(repairJson(raw)); }   // спасаем ответ с "сырыми" кавычками
     }
   },
-  async approve(id){
+  async approve(id,p){
     if(USE_MOCK){ await wait(700); return {ok:true,date:today()}; }
-    const r=await fetch(WEBHOOK_DECISION,{method:"POST",body:new URLSearchParams({id,action:"approve"})});
+    p=p||{};
+    const r=await fetch(WEBHOOK_DECISION,{method:"POST",body:new URLSearchParams({
+      id, action:"approve",
+      proofPdfUrl:  p.proofPdfUrl  || "",   // сгенерированный пруф (PDF) в Dropbox
+      proofPdfName: p.proofPdfName || ""
+    })});
     if(!r.ok) throw new Error("approve_failed");
     return r.json().catch(()=>({ok:true,date:today()}));
   },
@@ -1296,7 +1313,16 @@ document.addEventListener("click",async e=>{
 let CURRENT=null;
 document.getElementById("confirmApprove").onclick=async()=>{
   const b=document.getElementById("confirmApprove");b.disabled=true;b.textContent="Approving…";
-  try{const res=await API.approve(CURRENT.recordID);closeModal(document.getElementById("approveModal"));
+  try{
+    let pdf=null;
+    try{                                                  // PDF для вендора: сбой не должен мешать апруву
+      b.textContent="Preparing files…";
+      pdf=await Promise.race([ uploadProofPdf(CURRENT),
+        new Promise(r=>setTimeout(()=>r(null),90000)) ]);
+    }catch(e){ pdf=null; }
+    b.textContent="Approving…";
+    const res=await API.approve(CURRENT.recordID,{proofPdfUrl:pdf&&pdf.url, proofPdfName:pdf&&pdf.name});
+    closeModal(document.getElementById("approveModal"));
     CURRENT.status="Proof Approved";CURRENT.approvedDate=res.date||today();renderDecision(CURRENT);showResult("approved",CURRENT.approvedDate);
   }catch(e){b.disabled=false;b.textContent="Yes, approve";alert("Something went wrong sending your approval. Please try again, or contact your account manager.");}
 };
