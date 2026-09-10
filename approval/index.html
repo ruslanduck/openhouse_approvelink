@@ -475,16 +475,58 @@ function sanitizeProof(d){
   return o;
 }
 
-/* Собирает PDF карточки пруфа и кладёт его в Dropbox (та же папка, что и остальные файлы заказа).
-   Возвращает прямую ссылку — её Make положит в Airtable в "Vendor Production Files". */
+/* Собирает PDF карточки пруфа и кладёт его в Dropbox отдельным ФАЙЛОМ.
+   Возвращает прямую ссылку на файл (dl=1) — по ней Airtable заберёт вложение. */
+function toDirectLink(u){
+  if(!u) return "";
+  if(/[?&]dl=0/.test(u)) return u.replace(/([?&])dl=0/,"$1dl=1");
+  if(/[?&]dl=1/.test(u)) return u;
+  return u + (u.indexOf("?")>-1 ? "&" : "?") + "dl=1";
+}
 async function uploadProofPdf(d){
   if(!DROPBOX.enabled()) return null;
-  const res=await buildVendorPdf(d);                    // {doc, filename}
-  const blob=res.doc.output("blob");
-  let file; try{ file=new File([blob],res.filename,{type:"application/pdf"}); }
-  catch(e){ file=blob; file.name=res.filename; }
-  const link=await uploadFileToDropbox(file, d.orderNo, d.productName);
-  return { url:link, name:res.filename };
+  const res  = await buildVendorPdf(d);                 // {doc, filename}
+  const blob = res.doc.output("blob");
+  const token= await getDropboxAccessToken();
+
+  const safeId   = String(d.orderNo||"order").replace(/[^\w\-]/g,"_").slice(0,50);
+  const safeProd = (String(d.productName||"").replace(/[^\w\-]/g,"_").trim().slice(0,40)) || "product";
+  const folder   = `${DROPBOX.UPLOAD_FOLDER}/${safeId}/${safeProd}`;
+  const path     = `${folder}/${res.filename}`;
+
+  await fetch("https://api.dropboxapi.com/2/files/create_folder_v2",{      // 409 = уже есть, игнорируем
+    method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},
+    body:JSON.stringify({path:folder,autorename:false})
+  });
+  const up=await fetch("https://content.dropboxapi.com/2/files/upload",{
+    method:"POST",
+    headers:{Authorization:"Bearer "+token,"Content-Type":"application/octet-stream",
+      "Dropbox-API-Arg":asciiJson({path,mode:"overwrite",autorename:false,mute:true})},
+    body:blob
+  });
+  if(!up.ok) throw new Error("dropbox_upload_failed: "+(await up.text()).slice(0,200));
+  const realPath=(await up.json().catch(()=>({}))).path_lower || path;
+
+  // ссылка именно на ФАЙЛ (а не на папку)
+  let link="";
+  const mk=await fetch("https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings",{
+    method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},
+    body:JSON.stringify({path:realPath,settings:{requested_visibility:"public"}})
+  });
+  if(mk.ok){ link=(await mk.json()).url; }
+  else{
+    const e=await mk.json().catch(()=>({}));
+    link = e?.error?.shared_link_already_exists?.metadata?.url || "";
+    if(!link){
+      const ls=await fetch("https://api.dropboxapi.com/2/sharing/list_shared_links",{
+        method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},
+        body:JSON.stringify({path:realPath,direct_only:true})
+      });
+      if(ls.ok) link=((await ls.json()).links||[])[0]?.url || "";
+    }
+  }
+  if(!link) throw new Error("dropbox_link_failed");
+  return { url: toDirectLink(link), name: res.filename };
 }
 
 /* ================= ЛОГ ПРОСМОТРОВ =================
