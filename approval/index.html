@@ -875,11 +875,26 @@ function hasProofColors(d){
 }
 /* обязательные поля для валидного прува: хотя бы один artwork label+значение, цвета и картинка.
    blank order считается заполненным (артворк не требуется). */
+/* готовность пруфа = единый источник правды.
+   1) Если Make присылает proofReady (поле "Missing Fields" из Airtable) — верим ему.
+   2) Иначе своя проверка: цвета + картинка артворка; размеры артворка требуем
+      только если НЕ отмечена галочка No Sizes (hasSizes=1). */
+function isProofReadyFlag(d){
+  const v=d.proofReady;
+  if(v===undefined||v===null||String(v).trim()==="") return null;   // поле не передано
+  const s=String(v).trim().toLowerCase();
+  if(v===true||s==="1"||s==="true"||s==="yes"||s==="ready") return true;
+  if(v===false||s==="0"||s==="false"||s==="no") return false;
+  return !/missing|not ready|incomplete/.test(s);                    // текстовый статус
+}
 function isProofComplete(d){
   if(isBlankOrder(d)) return true;
-  const hasVal=!!(String(d.frontSize||"").trim()||String(d.backSize||"").trim());
-  const hasImg=collectVectorImages(d).length>0;
-  return hasVal && hasProofColors(d) && hasImg;
+  const flag=isProofReadyFlag(d);
+  if(flag!==null) return flag;
+  const noSizes = !(d.hasSizes===true||d.hasSizes===1||d.hasSizes==="1"||String(d.hasSizes).toLowerCase()==="true");
+  const hasVal  = !!(String(d.frontSize||"").trim()||String(d.backSize||"").trim());
+  const hasImg  = collectVectorImages(d).length>0;
+  return hasProofColors(d) && hasImg && (hasVal || noSizes);
 }
 
 /* ============ СКАЧИВАНИЕ PDF (вендор-пруф) ============ */
@@ -1174,15 +1189,29 @@ function renderAttachList(){
 })();
 
 // скачивание оригинального файла картинки (blob), airtable часто без CORS -> fallback через weserv
+/* расширение файла по MIME-типу (общая таблица для артворка и hi-res мокапа) */
+const FILE_EXT={"application/pdf":"pdf","application/postscript":"ai","application/illustrator":"ai",
+  "application/eps":"eps","application/x-eps":"eps","image/vnd.adobe.photoshop":"psd",
+  "image/svg+xml":"svg","image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/tiff":"tif"};
+function extFor(blob,url){
+  let ext=FILE_EXT[blob&&blob.type];
+  if(!ext){
+    const m=/\.([a-z0-9]{2,4})(?:[?#]|$)/i.exec(url||"");           // пробуем из ссылки
+    if(m) ext=m[1].toLowerCase();
+  }
+  if(!ext && blob && /^image\//.test(blob.type)) ext=(blob.type.split("/")[1]||"png").replace("jpeg","jpg");
+  return ext||"pdf";
+}
+/* скачиваем ОРИГИНАЛЬНЫЙ файл как есть (векторный .ai/.eps/.pdf/.svg — без конвертации в картинку) */
 async function downloadImageFile(url, filename){
-  let blob;
-  try{ const r=await fetch(url,{mode:"cors"}); if(!r.ok) throw 0; blob=await r.blob(); }
-  catch(e){ const r=await fetch("https://images.weserv.nl/?url=ssl:"+url.replace(/^https?:\/\//,""),{mode:"cors"}); blob=await r.blob(); }
-  const ext=(blob.type.split("/")[1]||"png").replace("jpeg","jpg");
+  const r=await fetch(url,{mode:"cors"});
+  if(!r.ok) throw new Error("download_failed");
+  const blob=await r.blob();
+  const name=/\.\w{2,4}$/.test(filename) ? filename : `${filename}.${extFor(blob,url)}`;
   const a=document.createElement("a"), u=URL.createObjectURL(blob);
-  a.href=u; a.download=/\.\w+$/.test(filename)?filename:`${filename}.${ext}`;
+  a.href=u; a.download=name; a.rel="noopener";
   document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(u),1500);
+  setTimeout(()=>URL.revokeObjectURL(u),20000);
 }
 
 /* оригинальный файл из поля high res mockup (как есть: PDF/AI/PNG — без конвертации) */
@@ -1192,13 +1221,7 @@ async function prepRawMockup(d){
   try{
     const r=await fetch(urls[0],{mode:"cors"}); if(!r.ok) return null;
     const blob=await r.blob();
-    const EXT={"application/pdf":"pdf","application/postscript":"ai","application/illustrator":"ai",
-               "image/png":"png","image/jpeg":"jpg","image/webp":"webp","image/tiff":"tif"};
-    let ext=EXT[blob.type];
-    if(!ext){
-      const m=/\.([a-z0-9]{2,4})(?:[?#]|$)/i.exec(urls[0]||"");     // пробуем взять из ссылки
-      ext = m ? m[1].toLowerCase() : (/^image\//.test(blob.type) ? (blob.type.split("/")[1]||"png").replace("jpeg","jpg") : "pdf");
-    }
+    const ext=extFor(blob,urls[0]);
     const safe=x=>String(x||"").replace(/[^\w\-]+/g,"_");
     return { url:URL.createObjectURL(blob),
              filename:`${safe(d.orderNo)||"proof"}_${safe(d.productName)}_hires.${ext}` };
