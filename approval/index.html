@@ -540,7 +540,9 @@ const API = {
     const r=await fetch(WEBHOOK_DECISION,{method:"POST",body:new URLSearchParams({
       id, action:"approve",
       proofPdfUrl:  p.proofPdfUrl  || "",   // сгенерированный пруф (PDF) в Dropbox
-      proofPdfName: p.proofPdfName || ""
+      proofPdfName: p.proofPdfName || "",
+      hiResUrl:     p.hiResUrl     || "",   // оригинал hi-res от дизайнеров (ссылка Airtable)
+      hiResName:    p.hiResName    || ""
     })});
     if(!r.ok) throw new Error("approve_failed");
     return r.json().catch(()=>({ok:true,date:today()}));
@@ -1321,7 +1323,13 @@ document.getElementById("confirmApprove").onclick=async()=>{
         new Promise(r=>setTimeout(()=>r(null),90000)) ]);
     }catch(e){ pdf=null; }
     b.textContent="Approving…";
-    const res=await API.approve(CURRENT.recordID,{proofPdfUrl:pdf&&pdf.url, proofPdfName:pdf&&pdf.name});
+    const hiRes=parseImageUrls(CURRENT.mockupHighUrl||CURRENT.mockupHigh)[0]||"";
+    const safe=x=>String(x||"").replace(/[^\w\-]+/g,"_");
+    const res=await API.approve(CURRENT.recordID,{
+      proofPdfUrl:pdf&&pdf.url, proofPdfName:pdf&&pdf.name,
+      hiResUrl:hiRes,
+      hiResName:hiRes?`${safe(CURRENT.orderNo)||"order"}_${safe(CURRENT.productName)}_hires.pdf`:""
+    });
     closeModal(document.getElementById("approveModal"));
     CURRENT.status="Proof Approved";CURRENT.approvedDate=res.date||today();renderDecision(CURRENT);showResult("approved",CURRENT.approvedDate);
   }catch(e){b.disabled=false;b.textContent="Yes, approve";alert("Something went wrong sending your approval. Please try again, or contact your account manager.");}
