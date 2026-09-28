@@ -476,10 +476,22 @@ function normSize(v){
 const TEXT_FIELDS=["proofKind","productName","orderNo","preparedFor","date","printMethod",
   "proofVersion","productCode","scale","measureLine","placement","clientOrderNotes",
   "frontLabel","backLabel","colors","variantText","qtyNote","artworkSize"];
+/* lookup-поля из нескольких связанных записей Airtable приходят с повторами:
+   "Screenprint, Screenprint, Screenprint" -> "Screenprint". Порядок сохраняем, регистр не важен. */
+function dedupeList(v){
+  const s=cleanStr(v); if(!s || s.indexOf(",")<0) return s;
+  const seen=new Set(), out=[];
+  s.split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>{
+    const k=x.toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(x); }
+  });
+  return out.join(", ");
+}
+const DEDUPE_FIELDS=["printMethod","preparedFor","orderNo","productCode","date","proofVersion"];
 function sanitizeProof(d){
   if(!d || typeof d!=="object") throw new Error("bad_payload");
   const o={...d};
   TEXT_FIELDS.forEach(k=>{ if(k in o) o[k]=cleanStr(o[k]); });
+  DEDUPE_FIELDS.forEach(k=>{ if(k in o) o[k]=dedupeList(o[k]); });
   o.frontSize=normSize(o.frontSize);
   o.backSize =normSize(o.backSize);
   return o;
