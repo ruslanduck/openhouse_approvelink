@@ -219,6 +219,10 @@
   /* появление блоков при скролле (лёгкое, на IntersectionObserver) */
   .reveal{opacity:0;transform:translateY(20px);transition:opacity .55s ease,transform .55s ease;will-change:opacity,transform}
   .reveal.in{opacity:1;transform:none}
+  /* серверный рендер PDF (CloudConvert/headless Chrome): всё видно сразу, без кнопок и липкого хедера */
+  .pdf-render .reveal{opacity:1 !important;transform:none !important;transition:none !important}
+  .pdf-render .pdf-dl,.pdf-render .art-dl{display:none !important}
+  .pdf-render .site-header{position:absolute !important;backdrop-filter:none;-webkit-backdrop-filter:none}
   .p-specs>.section.reveal:nth-child(2){transition-delay:.09s}
   .p-specs>.section.reveal:nth-child(3){transition-delay:.18s}
   .p-specs>.section.reveal:nth-child(4){transition-delay:.27s}
@@ -386,11 +390,17 @@
 </div>
 
 <script>
+/* серверный браузер (рендер PDF) -> режим печати: блоки видимы сразу, без кнопок */
+if(navigator.webdriver) document.documentElement.classList.add("pdf-render");
 /* ================= CONFIG ================= */
 const USE_MOCK        = false;   // песочница. Для прода -> false
 const WEBHOOK_PROOF   = "https://hook.us2.make.com/k2a9wj9sq2y4s3webrd9vr0b13xypm9v";
 const WEBHOOK_DECISION= "https://hook.us2.make.com/s33rzx18u09jxbhps7wc9nmkltlr6pzp";
-const WEBHOOK_LOG     = "";   // <-- URL вебхука сценария логирования просмотров (пусто = логирование выключено)
+const WEBHOOK_LOG     = "";
+/* PDF пруфа при апруве собирается в браузере клиента:
+   "desktop" — только на компьютере (на телефоне пропускаем: медленно и ненадёжно)
+   "never"   — не собирать вообще (когда PDF генерирует Make/CloudConvert на сервере) */
+const CLIENT_PDF_ON_APPROVE = "desktop";   // <-- URL вебхука сценария логирования просмотров (пусто = логирование выключено)
 
 const MOCK = {
   recordID:"rectkLj0T3LCQiOlI",
@@ -532,6 +542,7 @@ async function uploadProofPdf(d){
    и тип ссылки (клиентская или вендорская). Дату/время добавит сам комментарий Airtable. */
 async function logProofView(d){
   if(!WEBHOOK_LOG || !d) return;
+  if(navigator.webdriver) return;          // серверный рендер PDF (CloudConvert и т.п.) — не логируем
   const vendor=isVendorMode();
   const key="ohProofViewed:"+(d.recordID||"")+":"+(vendor?"vendor":"client");
   try{ if(sessionStorage.getItem(key)) return; sessionStorage.setItem(key,"1"); }catch(e){}
@@ -1358,12 +1369,21 @@ document.getElementById("confirmApprove").onclick=async()=>{
   const b=document.getElementById("confirmApprove");b.disabled=true;b.textContent="Approving…";
   try{
     let pdf=null, pdfErr="";
-    try{                                                  // PDF для вендора: сбой не должен мешать апруву
-      b.textContent="Preparing files…";
-      pdf=await Promise.race([ uploadProofPdf(CURRENT),
-        new Promise(r=>setTimeout(()=>r(null),90000)) ]);
-      if(!pdf) pdfErr = DROPBOX.enabled() ? "timeout_90s" : "dropbox_disabled";
-    }catch(e){ pdf=null; pdfErr=String(e&&e.message||e).slice(0,300); }
+    const isMobile = Math.min(window.innerWidth||1200, window.innerHeight||900) < 700 ||
+                     /iP(hone|ad|od)|Android/i.test(navigator.userAgent) ||
+                     (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
+    if(CLIENT_PDF_ON_APPROVE==="never"){
+      pdfErr="server_side";                               // PDF сгенерирует Make
+    }else if(isMobile){
+      pdfErr="mobile_skipped";                            // телефон: апрув сразу, без долгого ожидания
+    }else{
+      try{                                                // компьютер: PDF, сбой не мешает апруву
+        b.textContent="Preparing files…";
+        pdf=await Promise.race([ uploadProofPdf(CURRENT),
+          new Promise(r=>setTimeout(()=>r(null),150000)) ]);   // > внутреннего бюджета 120с
+        if(!pdf) pdfErr = DROPBOX.enabled() ? "timeout_150s" : "dropbox_disabled";
+      }catch(e){ pdf=null; pdfErr=String(e&&e.message||e).slice(0,300); }
+    }
     b.textContent="Approving…";
     const hiRes=parseImageUrls(CURRENT.mockupHighUrl||CURRENT.mockupHigh)[0]||"";
     const safe=x=>String(x||"").replace(/[^\w\-]+/g,"_");
@@ -1413,7 +1433,7 @@ function armReveal(){
   const id=getId();const content=document.getElementById("content");
   if(!id&&!USE_MOCK){document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>Link is missing its proof</h2>Please open the link from your email, or contact your account manager.</div>`;return;}
-  try{CURRENT=sanitizeProof(await API.getProof(id));content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();logProofView(CURRENT);}
+  try{CURRENT=sanitizeProof(await API.getProof(id));content.innerHTML=renderProof(CURRENT);renderDecision(CURRENT);armReveal();logProofView(CURRENT);waitImages(document).then(()=>document.body.classList.add("pdf-ready"));}
   catch(e){console.error("proof load failed:",e);document.getElementById("decision").innerHTML="";
     content.innerHTML=`<div class="state"><h2>We couldn’t find this proof</h2>It may have been moved or replaced. Contact your account manager and we’ll resend it.</div>`;}
 })();
