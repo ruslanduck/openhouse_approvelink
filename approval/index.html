@@ -222,7 +222,13 @@
   /* серверный рендер PDF (CloudConvert/headless Chrome): всё видно сразу, без кнопок и липкого хедера */
   .pdf-render .reveal{opacity:1 !important;transform:none !important;transition:none !important}
   .pdf-render .pdf-dl,.pdf-render .art-dl{display:none !important}
-  .pdf-render .site-header{position:absolute !important;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .pdf-render .site-header,.pdf-render .intro,.pdf-render .site-footer{display:none !important}
+  .pdf-render body{background:#fff !important;padding-top:0 !important;min-height:0 !important}
+  .pdf-render .proof-wrap{max-width:none !important;margin:0 !important;padding:0 !important}
+  .pdf-render .proof{margin:0 !important;box-shadow:none !important;border:0 !important;
+    break-after:page;page-break-after:always}
+  .pdf-render .proof:last-child{break-after:auto;page-break-after:auto}
+  @page{margin:0}
   .p-specs>.section.reveal:nth-child(2){transition-delay:.09s}
   .p-specs>.section.reveal:nth-child(3){transition-delay:.18s}
   .p-specs>.section.reveal:nth-child(4){transition-delay:.27s}
@@ -391,7 +397,8 @@
 
 <script>
 /* серверный браузер (рендер PDF) -> режим печати: блоки видимы сразу, без кнопок */
-if(navigator.webdriver) document.documentElement.classList.add("pdf-render");
+const PDF_RENDER = !!navigator.webdriver || /[?&]render=pdf(&|$)/.test(location.search);
+if(PDF_RENDER) document.documentElement.classList.add("pdf-render");
 /* ================= CONFIG ================= */
 const USE_MOCK        = false;   // песочница. Для прода -> false
 const WEBHOOK_PROOF   = "https://hook.us2.make.com/k2a9wj9sq2y4s3webrd9vr0b13xypm9v";
@@ -497,6 +504,17 @@ function sanitizeProof(d){
   return o;
 }
 
+/* цвет базы для имени файла: у разных расцветок одного заказа имена не совпадут */
+function colorTag(d){
+  const cs=(typeof parseColors==="function") ? parseColors(d) : [];
+  const base=cs.find(c=>c.type==="base") || cs[0];
+  return base && base.name ? String(base.name).replace(/[^\w\-]+/g,"_").replace(/^_+|_+$/g,"").slice(0,24) : "";
+}
+function proofBaseName(d){
+  const safe=x=>String(x||"").replace(/[^\w\-]+/g,"_").replace(/^_+|_+$/g,"");
+  return [safe(d&&d.orderNo)||"proof", safe(d&&d.productName), colorTag(d)].filter(Boolean).join("_");
+}
+
 /* Собирает PDF карточки пруфа и кладёт его в Dropbox отдельным ФАЙЛОМ.
    Возвращает прямую ссылку на файл (dl=1) — по ней Airtable заберёт вложение. */
 /* raw=1: Dropbox отдаёт файл с настоящим типом (application/pdf) и именем.
@@ -515,13 +533,15 @@ async function uploadProofPdf(d){
   const safeId   = String(d.orderNo||"order").replace(/[^\w\-]/g,"_").slice(0,50);
   const safeProd = (String(d.productName||"").replace(/[^\w\-]/g,"_").trim().slice(0,40)) || "product";
   const folder   = `${DROPBOX.UPLOAD_FOLDER}/${safeId}/${safeProd}`;
-  const path     = `${folder}/${res.filename}`;
+  const safeRec  = String(d.recordID||"rec").replace(/[^\w\-]/g,"_").slice(0,30);
+  // у каждого Design Request свой файл: иначе расцветки одного заказа перезаписывают друг друга
+  const path     = `${folder}/${safeRec}/${Date.now()}_${res.filename}`;
 
   // папку создавать не нужно: files/upload создаёт её сам
   const up=await fetch("https://content.dropboxapi.com/2/files/upload",{
     method:"POST",
     headers:{Authorization:"Bearer "+token,"Content-Type":"application/octet-stream",
-      "Dropbox-API-Arg":asciiJson({path,mode:"overwrite",autorename:false,mute:true})},
+      "Dropbox-API-Arg":asciiJson({path,mode:"add",autorename:true,mute:true})},
     body:blob
   });
   if(!up.ok) throw new Error("dropbox_upload_failed: "+(await up.text()).slice(0,200));
@@ -554,7 +574,7 @@ async function uploadProofPdf(d){
    и тип ссылки (клиентская или вендорская). Дату/время добавит сам комментарий Airtable. */
 async function logProofView(d){
   if(!WEBHOOK_LOG || !d) return;
-  if(navigator.webdriver) return;          // серверный рендер PDF (CloudConvert и т.п.) — не логируем
+  if(PDF_RENDER) return;                   // серверный рендер PDF (CloudConvert и т.п.) — не логируем
   const vendor=isVendorMode();
   const key="ohProofViewed:"+(d.recordID||"")+":"+(vendor?"vendor":"client");
   try{ if(sessionStorage.getItem(key)) return; sessionStorage.setItem(key,"1"); }catch(e){}
@@ -1060,7 +1080,7 @@ async function buildVendorPdf(d){
     doc.addImage(dataUrl,"JPEG",0,0,w,h,undefined,"FAST");
   }
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
-  return { doc, filename: `${safe(d&&d.orderNo)||"proof"}_${safe(d&&d.productName)}_proof.pdf` };
+  return { doc, filename: `${proofBaseName(d)}_proof.pdf` };
 }
 
 /* запасной вариант: только картинки (если html2canvas недоступен) */
@@ -1082,7 +1102,7 @@ async function buildVendorPdfImagesOnly(d){
   }
   if(!placed) throw new Error("all images failed");
   const safe=s=>String(s||"").replace(/[^\w\-]+/g,"_");
-  return { doc, filename: `${safe(d.orderNo)||"proof"}_${safe(d.productName)}_proof.pdf` };
+  return { doc, filename: `${proofBaseName(d)}_proof.pdf` };
 }
 
 function renderDecision(d){
@@ -1381,9 +1401,15 @@ document.getElementById("confirmApprove").onclick=async()=>{
   const b=document.getElementById("confirmApprove");b.disabled=true;b.textContent="Approving…";
   try{
     let pdf=null, pdfErr="";
-    const isMobile = Math.min(window.innerWidth||1200, window.innerHeight||900) < 700 ||
-                     /iP(hone|ad|od)|Android/i.test(navigator.userAgent) ||
-                     (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1);
+    // телефон/планшет определяем по типу устройства, а не по размеру окна:
+    // иначе ноутбуки с небольшим экраном тоже уходили бы в CloudConvert и тратили кредиты
+    const ua = navigator.userAgent || "";
+    const touchOnly = !!(window.matchMedia &&
+                         matchMedia("(pointer: coarse)").matches &&
+                         matchMedia("(hover: none)").matches);           // сенсор без мыши
+    const isMobile = /iP(hone|ad|od)|Android|Mobile/i.test(ua) ||
+                     (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ||   // iPad «как Mac»
+                     touchOnly;
     if(CLIENT_PDF_ON_APPROVE==="never"){
       pdfErr="server_side";                               // PDF сгенерирует Make
     }else if(isMobile){
@@ -1402,7 +1428,7 @@ document.getElementById("confirmApprove").onclick=async()=>{
     const res=await API.approve(CURRENT.recordID,{
       proofPdfUrl:pdf&&pdf.url, proofPdfName:pdf&&pdf.name, proofPdfError:pdfErr,
       hiResUrl:hiRes,
-      hiResName:hiRes?`${safe(CURRENT.orderNo)||"order"}_${safe(CURRENT.productName)}_hires.pdf`:""
+      hiResName:hiRes?`${proofBaseName(CURRENT)}_hires.pdf`:""
     });
     closeModal(document.getElementById("approveModal"));
     CURRENT.status="Proof Approved";CURRENT.approvedDate=res.date||today();renderDecision(CURRENT);showResult("approved",CURRENT.approvedDate);
