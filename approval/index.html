@@ -147,9 +147,11 @@
 
   /* ================= НИЖНЯЯ СЕТКА ================= */
   /* колонки-разделы: [цвета: BASE + IMPRINT] | [QTY + размеры] | [vector] | [notes?] */
-  .p-specs{display:grid;grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(250px,1.7fr) minmax(150px,1.05fr);
+  .p-specs{display:grid;grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(150px,.9fr) minmax(150px,1.05fr);
     border-top:1.5px solid var(--line-ink);margin-top:16px}
-  .p-specs.no-notes{grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(250px,1.9fr)}
+  .p-specs.no-notes{grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(150px,.9fr)}
+  .p-specs.no-vector{grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr) minmax(150px,1.05fr)}
+  .p-specs.no-vector.no-notes{grid-template-columns:minmax(210px,1.15fr) minmax(120px,.85fr)}
   .section{min-width:0}
   .section+.section{border-left:1px solid var(--line)}   /* только вертикальные разделители колонок — всегда ровные, на всю высоту */
   .spec{padding:18px 18px 24px}
@@ -199,6 +201,9 @@
   .vector .v-meta .vm-row{margin-bottom:14px}
   .vector .v-meta .vm-row:last-child{margin-bottom:0}
   .vector .v-meta .vm-row span{display:block}
+  .vector .v-meta.solo{border:0;margin:0;padding:0;flex:1 1 auto;display:block}   /* без картинок артворка — без разделителя */
+  .vector .v-meta.solo .vm-row{margin-bottom:14px}
+  .vector .v-meta.solo .vm-row:last-child{margin-bottom:0}
   .blank-order{font-family:var(--font-body);font-size:clamp(10.5px,1.5vw,12px);letter-spacing:.14em;color:var(--ink-soft);font-weight:700;text-transform:uppercase}
 
   /* ================= ФУТЕР ================= */
@@ -280,7 +285,7 @@
 
   /* ================= ПЛАНШЕТ: колонки спецификаций в один столбец, чтобы не переполнялось ================= */
   @media(max-width:900px){
-    .p-specs,.p-specs.no-notes{grid-template-columns:1fr}
+    .p-specs,.p-specs.no-notes,.p-specs.no-vector,.p-specs.no-vector.no-notes{grid-template-columns:1fr}
     .p-specs .section+.section{border-left:0;border-top:1px solid var(--line)}
     .p-specs .spec.center{text-align:left}
     .vector{flex-direction:column}
@@ -297,7 +302,7 @@
     .sh-actions{justify-self:end;gap:8px}
     .sh-right{display:none}
     .proof-wrap{padding:0 12px}
-    .p-specs,.p-specs.no-notes{grid-template-columns:1fr}
+    .p-specs,.p-specs.no-notes,.p-specs.no-vector,.p-specs.no-vector.no-notes{grid-template-columns:1fr}
     .section+.section{border-left:0;border-top:1px solid var(--line)}
     .spec.center{text-align:left}
     .vector{flex-direction:column}
@@ -792,11 +797,6 @@ function swatchRow(colors){
 function renderProofCard(d){
   const front=d.frontArtUrl?`<div class="art"><img src="${esc(d.frontArtUrl)}" alt="Artwork"></div>`:`<div class="art">${artPlaceholder()}</div>`;
 
-  const vectorImgs = collectVectorImages(d);
-  const vector = vectorImgs.length
-    ? vectorImgs.map(u=>`<div class="v-art"><img src="${esc(mockupSrc(u,700))}" alt="Vector artwork" loading="lazy" data-fb="${esc(u)}" onerror="if(this.dataset.fb){this.src=this.dataset.fb;this.dataset.fb='';}else{this.style.display='none';this.nextElementSibling.style.display='flex';}"><div class="img-missing" style="display:none">Image link expired<br>or unavailable</div>${isVendorMode()?`<button class="art-dl" type="button" title="Download artwork" aria-label="Download artwork" data-url="${esc(u)}"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>`:""}</div>`).join("")
-    : `<div class="v-art">${artPlaceholder()}</div>`;
-
   /* --- цвета: новый формат (Design Colors) или старый --- */
   const parsedColors = parseColors(d);
   let baseColors, accentColors;
@@ -864,6 +864,8 @@ function renderProofCard(d){
   const frontLabel = String(d.frontLabel || "").trim() || "Front";  // подпись из вебхука, дефолт Front
   const backLabel  = String(d.backLabel  || "").trim() || "Back";   // подпись из вебхука, дефолт Back
   const notesRaw  = String(d.clientOrderNotes||"").trim();
+  /* колонка размеров артворка: только если есть FRONT/BACK или это blank order (картинки артворка больше не показываем) */
+  const hasVectorCol = isBlankOrder(d) || hasMeta;
   const notesHtml = notesRaw ? esc(notesRaw).replace(/\s*\|\|\s*|\r?\n/g,"<br>") : "";
 
   const keyIcon=`<svg class="oh-key" viewBox="0 0 24 12" fill="none">
@@ -904,7 +906,7 @@ function renderProofCard(d){
       <div class="measure">${esc(formatMeasure(d.measureLine))}</div>
     </div>
 
-    <div class="p-specs${notesRaw?"":" no-notes"}">
+    <div class="p-specs${notesRaw?"":" no-notes"}${hasVectorCol?"":" no-vector"}">
       <div class="section s-colors reveal">
         <div class="spec center"><h4>Base</h4>${swatchRow(baseColors.length?baseColors:[{name:"—",hex:""}])}</div>
         ${accentColors.length?`<div class="spec center"><h4>${esc(accentTitle)}</h4>${swatchRow(accentColors)}</div>`:""}
@@ -914,19 +916,17 @@ function renderProofCard(d){
           <div class="qty-note">${esc(qtyNote)}</div></div>
         ${sizeBlock}
       </div>
-      <div class="section s-vector reveal">
+      ${hasVectorCol?`<div class="section s-vector reveal">
         ${isBlankOrder(d)
           ? `<div class="spec"><div class="blank-order">This is a blank order</div></div>`
-          : `<div class="spec"><h4>Client Vector Artwork</h4>
-          <div class="v-sub">Artwork placed on product at 100% scale</div>
+          : `<div class="spec">
           <div class="vector">
-            <div class="v-arts">${vector}</div>
-            ${hasMeta?`<div class="v-meta">
+            ${hasMeta?`<div class="v-meta solo">
               ${frontSize?`<div class="vm-row"><b>${esc(frontLabel)}</b><span>${esc(frontSize)}</span></div>`:""}
               ${backSize?`<div class="vm-row"><b>${esc(backLabel)}</b><span>${esc(backSize)}</span></div>`:""}
             </div>`:""}
           </div></div>`}
-      </div>
+      </div>`:""}
       ${notesSection}
     </div>
   </div>`;
@@ -1088,7 +1088,6 @@ async function buildVendorPdfImagesOnly(d){
   const { jsPDF } = window.jspdf;
   const urls=[];
   parseImageUrls(d.mockupHighUrl || d.mockupHigh || d.mockupUrl).forEach(u=>urls.push(mockupSrc(u,2200)));
-  collectVectorImages(d).forEach(u=>urls.push(mockupSrc(u,2200)));
   if(!urls.length) throw new Error("no images");
   const doc=new jsPDF({unit:"pt",format:"a4"});
   const pw=doc.internal.pageSize.getWidth(), ph=doc.internal.pageSize.getHeight(), m=36;
