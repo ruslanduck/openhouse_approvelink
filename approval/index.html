@@ -777,14 +777,6 @@ function parseImageUrls(val){
   return [...new Set(String(val).split(/;;|\|\||[\n\r,]+|\s+/)
     .map(s=>s.trim()).filter(s=>/^https?:\/\//i.test(s)))];
 }
-/* все фото Client Vector Artwork из возможных полей */
-function collectVectorImages(d){
-  let urls=[];
-  ["vectorArtUrl","vectorArtUrls","vectorArt","frontArtUrl","backArtUrl","artworkUrl","artworkUrls"]
-    .forEach(k=>{ urls=urls.concat(parseImageUrls(d[k])); });
-  return [...new Set(urls)];
-}
-
 /* ================= кружки цветов: ряд с именами под каждым ================= */
 function swatchRow(colors){
   return `<div class="swatch-row">${colors.map(c=>`<div class="swatch-item">
@@ -970,34 +962,10 @@ function renderProof(d){
 function isBlankOrder(d){
   return d.blankOrder===true||d.blankOrder===1||d.blankOrder==="1"||d.blankOrder==="true"||d.blankOrder==="yes";
 }
-/* есть ли цвета (новый или старый формат) */
-function hasProofColors(d){
-  if(parseColors(d).length) return true;
-  const base=buildBaseColors(d);
-  return !!(base&&base.length);
-}
-/* обязательные поля для валидного прува: хотя бы один artwork label+значение, цвета и картинка.
-   blank order считается заполненным (артворк не требуется). */
-/* готовность пруфа = единый источник правды.
-   1) Если Make присылает proofReady (поле "Missing Fields" из Airtable) — верим ему.
-   2) Иначе своя проверка: цвета + картинка артворка; размеры артворка требуем
-      только если НЕ отмечена галочка No Sizes (hasSizes=1). */
-function isProofReadyFlag(d){
-  const v=d.proofReady;
-  if(v===undefined||v===null||String(v).trim()==="") return null;   // поле не передано
-  const s=String(v).trim().toLowerCase();
-  if(v===true||s==="1"||s==="true"||s==="yes"||s==="ready") return true;
-  if(v===false||s==="0"||s==="false"||s==="no") return false;
-  return !/missing|not ready|incomplete/.test(s);                    // текстовый статус
-}
-function isProofComplete(d){
-  if(isBlankOrder(d)) return true;
-  const flag=isProofReadyFlag(d);
-  if(flag!==null) return flag;
-  const noSizes = !(d.hasSizes===true||d.hasSizes===1||d.hasSizes==="1"||String(d.hasSizes).toLowerCase()==="true");
-  const hasVal  = !!(String(d.frontSize||"").trim()||String(d.backSize||"").trim());
-  const hasImg  = collectVectorImages(d).length>0;
-  return hasProofColors(d) && hasImg && (hasVal || noSizes);
+/* Approve показываем, только когда дизайнеры загрузили high-res мокап (Product mockup: High-res -> mockupHighUrl).
+   Остальные поля (цвета, размеры, артворк) кнопку больше не блокируют. */
+function hasHighRes(d){
+  return parseImageUrls(d.mockupHighUrl || d.mockupHigh).length>0;
 }
 
 /* ============ СКАЧИВАНИЕ PDF (вендор-пруф) ============ */
@@ -1120,8 +1088,8 @@ function renderDecision(d){
   }
   banner.innerHTML="";
   if(d.status==="Completed" || d.status==="Complete"){ box.innerHTML=""; return; }
-  // Approve скрываем, если пустые обязательные поля (artwork label+значение, цвета, картинка)
-  const complete=isProofComplete(d);
+  // Approve — только если загружен high-res (статусы Approved / Revision Requested / Completed отсечены выше)
+  const complete=hasHighRes(d);
   box.innerHTML=`<button class="btn" id="makeChanges">Make changes</button>
     ${complete?`<button class="btn btn-primary" id="approve">Approve</button>`:""}`;
   if(complete) document.getElementById("approve").onclick=()=>openModal("approveModal");
